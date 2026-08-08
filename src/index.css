@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@theme {
+  /* Skate-themed dark palette + neon accents */
+  --color-bg-base: #0a0a0f;
+  --color-bg-elevated: #13131c;
+  --color-bg-card: #1a1a26;
+  --color-bg-card-hover: #22222f;
+  --color-fg-primary: #f5f5fa;
+  --color-fg-secondary: #a8a8b8;
+  --color-fg-muted: #6b6b7a;
+  --color-border: #2a2a38;
+  --color-border-strong: #3a3a4a;
+
+  /* Neon accents */
+  --color-neon-green: #39ff14;
+  --color-neon-green-dim: #2acc10;
+  --color-neon-pink: #ff2e93;
+  --color-neon-pink-dim: #cc2475;
+  --color-neon-yellow: #faff00;
+  --color-neon-cyan: #00f0ff;
+  --color-neon-orange: #ff6b1a;
+
+  /* Semantic */
+  --color-present: #39ff14;
+  --color-present-bg: rgba(57, 255, 20, 0.12);
+  --color-absent: #ff2e93;
+  --color-absent-bg: rgba(255, 46, 147, 0.12);
+  --color-cancelled: #6b6b7a;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg-base);
+  color: var(--color-fg-primary);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Hide scrollbars but keep functionality */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Neon glow utility */
+.neon-glow-green {
+  box-shadow: 0 0 20px rgba(57, 255, 20, 0.4), 0 0 40px rgba(57, 255, 20, 0.15);
+}
+.neon-glow-pink {
+  box-shadow: 0 0 20px rgba(255, 46, 147, 0.4), 0 0 40px rgba(255, 46, 147, 0.15);
+}
+.neon-text-green {
+  text-shadow: 0 0 12px rgba(57, 255, 20, 0.6);
+}
+.neon-text-pink {
+  text-shadow: 0 0 12px rgba(255, 46, 147, 0.6);
+}
+
+/* Skateboard-stripe accent */
+.stripe-accent {
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(57, 255, 20, 0.08) 8px,
+    rgba(57, 255, 20, 0.08) 16px
+  );
+}
