@@ -70,3 +70,17 @@ The `dist/` folder is a static build. Drop it on any host:
 - **Self-hosted** — `npx serve dist` or any static server
 
 Set up: see DEPLOY.md.
+
+
+## Deploy (live)
+
+**Production URL:** https://novaprime2293.github.io/Skatetrack/
+
+The repo includes a manual `gh-pages` branch with the latest `dist/` build. To deploy a new version:
+
+```bash
+pnpm run build
+# Then push dist/ to the gh-pages branch (see deploy.sh below)
+```
+
+Or use the GitHub Actions workflow (after enabling `workflow` scope on a PAT): the `.github/workflows/deploy.yml` will auto-deploy on every push to `main`.
