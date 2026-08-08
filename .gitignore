@@ -27,3 +27,4 @@ dist-ssr
 screenshots/
 verify.mjs
 debug.mjs
+.github/
