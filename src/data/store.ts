@@ -62,6 +62,15 @@ interface StoreState {
   bulkSetAttendance: (sessionId: string, records: Array<{ studentId: string; status: 'present' | 'absent' }>) => void;
   resetAttendance: (sessionId: string) => void;
 
+  /**
+   * Mark attendance for a student on a date the batch doesn't normally run on.
+   * Reuses an existing session for (batchId, date) if one exists, otherwise
+   * creates a one-off session at the batch's normal start/end times, then
+   * writes the attendance record. Returns nothing — the cell updates via the
+   * normal setAttendance reactive update.
+   */
+  setAdhocAttendance: (batchId: string, studentId: string, date: string, status: 'present' | 'absent') => void;
+
   exportJSON: () => string;
   importJSON: (json: string) => Promise<{ ok: boolean; error?: string }>;
   resetAll: () => Promise<void>;
@@ -380,6 +389,21 @@ export const useStore = create<StoreState>((set, get) => ({
       persist(next);
       return { db: next };
     });
+  },
+
+  setAdhocAttendance: (batchId, studentId, date, status) => {
+    const { db } = get();
+    // 1. Reuse any persisted session for (batchId, date) — recurring or one-off.
+    const existing = db.sessions.find((s) => s.batchId === batchId && s.date === date);
+    let session = existing;
+    if (!session) {
+      // 2. Otherwise create a one-off session at the batch's normal times.
+      const batch = db.batches.find((b) => b.id === batchId);
+      if (!batch) throw new Error('Batch not found');
+      session = get().addOneOffSession(batchId, date, batch.startTime, batch.endTime);
+    }
+    // 3. Write the attendance record (existing helper handles upsert + status flip).
+    get().setAttendance(session.id, studentId, status);
   },
 
   exportJSON: () => JSON.stringify(get().db, null, 2),

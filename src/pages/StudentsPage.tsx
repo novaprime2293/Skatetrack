@@ -461,6 +461,7 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
   const attendance = useStore((s) => s.db.attendance);
   const ensureSession = useStore((s) => s.ensureSessionForBatchDate);
   const setAttendance = useStore((s) => s.setAttendance);
+  const setAdhocAttendance = useStore((s) => s.setAdhocAttendance);
   const [name, setName] = useState(student.name);
   const [parent, setParent] = useState(student.parentContact ?? '');
   const [showManageBatches, setShowManageBatches] = useState(false);
@@ -484,41 +485,36 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
   const isoOfDay = (day: number) =>
     `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-  // Pre-compute (date, batch) -> session for every day in the month, for every student batch.
-  // Each (date, batch) row can be tapped once attendance is recorded.
+  // Calendar model — one row per active batch, one cell per day of the month.
+  // A cell is "scheduled" if a session (recurring or one-off) exists for that (batch, date);
+  // otherwise the cell is empty but tappable to record adhoc attendance against that row's batch.
   const calendarRows = useMemo(() => {
-    const out: Array<{
-      date: string;
-      batchId: string;
-      batchName: string;
-      sessionId: string;
-      day: number;
-      status: 'present' | 'absent' | null;
-    }> = [];
     const fromStr = isoOfDay(1);
     const toStr = isoOfDay(daysInMonth);
-    for (const batch of activeStudentBatches) {
-      const sessionList = findOrCreateRecurringSessions(batch, sessions, fromStr, toStr);
-      for (const sess of sessionList) {
-        const realSession =
-          sess.id.startsWith('virtual-')
-            ? ensureSession(batch.id, sess.date)
-            : sess;
-        const rec = attendance.find((a) => a.sessionId === realSession.id && a.studentId === student.id);
-        out.push({
-          date: sess.date,
+    return activeStudentBatches
+      .map((batch) => {
+        const sessionList = findOrCreateRecurringSessions(batch, sessions, fromStr, toStr);
+        // Persist recurring sessions lazily so AttendanceRecord writes have a real session row to attach to.
+        for (const sess of sessionList) {
+          if (sess.id.startsWith('virtual-')) {
+            ensureSession(batch.id, sess.date);
+          }
+        }
+        const sessionByDate = new Map<string, ReturnType<typeof useStore.getState>['db']['sessions'][number]>();
+        for (const sess of sessions) {
+          if (sess.batchId === batch.id && sess.date >= fromStr && sess.date <= toStr) {
+            sessionByDate.set(sess.date, sess);
+          }
+        }
+        return {
           batchId: batch.id,
           batchName: batch.name,
-          sessionId: realSession.id,
-          day: parseISODate(sess.date).getDate(),
-          status: rec?.status ?? null,
-        });
-      }
-    }
-    // Stable order: by date, then batch name
-    out.sort((a, b) => (a.date === b.date ? a.batchName.localeCompare(b.batchName) : a.date.localeCompare(b.date)));
-    return out;
-  }, [activeStudentBatches, sessions, attendance, viewYear, viewMonth, daysInMonth, student.id, ensureSession]); // eslint-disable-line react-hooks/exhaustive-deps
+          daysOfWeek: batch.daysOfWeek,
+          sessionByDate,
+        };
+      })
+      .sort((a, b) => a.batchName.localeCompare(b.batchName));
+  }, [activeStudentBatches, sessions, viewYear, viewMonth, daysInMonth, ensureSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Batch context — per-batch totals for this month
   const batchContext = useMemo(() => {
@@ -530,15 +526,27 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
     });
   }, [activeStudentBatches, sessions, viewYear, viewMonth, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [pickerFor, setPickerFor] = useState<{ sessionId: string; date: string; batchName: string } | null>(null);
+  const [pickerFor, setPickerFor] = useState<
+    | { kind: 'scheduled'; sessionId: string; date: string; batchName: string }
+    | { kind: 'adhoc'; batchId: string; date: string; batchName: string }
+    | null
+  >(null);
 
-  const handleCellTap = (row: { sessionId: string; date: string; batchName: string; status: 'present' | 'absent' | null }) => {
-    setPickerFor({ sessionId: row.sessionId, date: row.date, batchName: row.batchName });
+  const handleScheduledCellTap = (sessionId: string, date: string, batchName: string) => {
+    setPickerFor({ kind: 'scheduled', sessionId, date, batchName });
+  };
+
+  const handleEmptyCellTap = (batchId: string, date: string, batchName: string) => {
+    setPickerFor({ kind: 'adhoc', batchId, date, batchName });
   };
 
   const handlePick = (status: 'present' | 'absent') => {
     if (!pickerFor) return;
-    setAttendance(pickerFor.sessionId, student.id, status);
+    if (pickerFor.kind === 'scheduled') {
+      setAttendance(pickerFor.sessionId, student.id, status);
+    } else {
+      setAdhocAttendance(pickerFor.batchId, student.id, pickerFor.date, status);
+    }
     setPickerFor(null);
   };
 
@@ -629,58 +637,77 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
                   <div key={d} className="text-center text-[9px] text-fg-muted">{d}</div>
                 ))}
               </div>
-              {/* One row per (date × batch) */}
-              {calendarRows.map((row, idx) => {
-                const isFirstOfDate = idx === 0 || calendarRows[idx - 1].date !== row.date;
-                return (
-                  <div
-                    key={`${row.date}-${row.batchId}`}
-                    className="grid items-center"
-                    style={{ gridTemplateColumns: `120px repeat(${daysInMonth}, minmax(20px, 1fr))` }}
-                  >
-                    <div className="text-[10px] text-fg-secondary truncate pr-2 flex items-center gap-1">
-                      {isFirstOfDate && (
-                        <span className="text-fg-muted font-bold">{parseISODate(row.date).toLocaleDateString(undefined, { weekday: 'short' })}</span>
-                      )}
-                      <span className="truncate">{row.batchName}</span>
-                    </div>
-                    {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
-                      if (d !== row.day) {
-                        return <div key={d} className="h-7" />;
-                      }
+              {/* One row per active batch — every day is a cell. */}
+              {calendarRows.map((row) => (
+                <div
+                  key={row.batchId}
+                  className="grid items-center"
+                  style={{ gridTemplateColumns: `120px repeat(${daysInMonth}, minmax(20px, 1fr))` }}
+                >
+                  <div className="text-[10px] text-fg-secondary truncate pr-2">
+                    {row.batchName}
+                  </div>
+                  {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
+                    const dateStr = isoOfDay(d);
+                    const sess = row.sessionByDate.get(dateStr);
+                    const isBatchDay = row.daysOfWeek.includes(parseISODate(dateStr).getDay());
+                    const hasOneOff = !!sess && sess.type === 'one-off';
+                    // A cell is a "batch day" if the batch normally runs that weekday OR a one-off/special was added for that date.
+                    const isBatchDayCell = isBatchDay || hasOneOff;
+                    const status = sess
+                      ? attendance.find((a) => a.sessionId === sess.id && a.studentId === student.id)?.status ?? null
+                      : null;
+                    if (sess) {
+                      // Scheduled cell — show status (present / absent / unmarked-but-scheduled).
                       const bg =
-                        row.status === 'present'
+                        status === 'present'
                           ? 'bg-neon-green text-bg-base'
-                          : row.status === 'absent'
+                          : status === 'absent'
                           ? 'bg-neon-pink text-bg-base'
                           : 'bg-bg-card border border-border text-fg-secondary';
                       return (
                         <button
                           key={d}
-                          onClick={() => handleCellTap(row)}
+                          onClick={() => handleScheduledCellTap(sess.id, dateStr, row.batchName)}
                           className={`relative h-7 mx-0.5 rounded ${bg} flex items-center justify-center text-[10px] font-bold active:scale-95`}
-                          aria-label={`${row.date} ${row.batchName} ${row.status ?? 'unmarked'}`}
+                          aria-label={`${dateStr} ${row.batchName} ${status ?? 'unmarked'}`}
                         >
                           {/* Batch-day marker — small cyan dot at the top, present on every scheduled class day regardless of attendance status. */}
-                          <span
-                            aria-hidden="true"
-                            className="absolute top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neon-cyan/70"
-                          />
-                          {row.status === 'present' ? '✓' : row.status === 'absent' ? '✗' : ''}
+                          {isBatchDayCell && (
+                            <span
+                              aria-hidden="true"
+                              className="absolute top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neon-cyan/70"
+                            />
+                          )}
+                          {status === 'present' ? '✓' : status === 'absent' ? '✗' : ''}
                         </button>
                       );
-                    })}
-                  </div>
-                );
-              })}
+                    }
+                    // Empty cell — no session. Tappable for adhoc attendance.
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => handleEmptyCellTap(row.batchId, dateStr, row.batchName)}
+                        className="relative h-7 mx-0.5 rounded bg-bg-card/40 hover:bg-bg-card flex items-center justify-center text-[10px] text-fg-muted active:scale-95 border border-dashed border-border/50"
+                        aria-label={`Mark ${row.batchName} on ${dateStr}`}
+                        title={`Tap to mark ${row.batchName} attendance on ${dateStr}`}
+                      >
+                        <span className="opacity-50">+</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        <div className="flex gap-3 mt-3 text-[10px] uppercase tracking-wider text-fg-muted">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-[10px] uppercase tracking-wider text-fg-muted">
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-neon-green" />Present</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-neon-pink" />Absent</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded border border-border bg-bg-card" />Unmarked</div>
+          <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-cyan/70" />Class day</div>
+          <div className="flex items-center gap-1"><span className="opacity-60">+</span>Tap empty to add</div>
         </div>
       </div>
 
@@ -703,11 +730,16 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
       />
 
       {pickerFor && (
-        <Modal open onClose={() => setPickerFor(null)} title="Mark attendance">
+        <Modal open onClose={() => setPickerFor(null)} title={pickerFor.kind === 'adhoc' ? 'Add attendance' : 'Mark attendance'}>
           <div className="space-y-3">
             <div className="text-sm text-fg-secondary">
               {formatISODateLong(pickerFor.date)} · {pickerFor.batchName}
             </div>
+            {pickerFor.kind === 'adhoc' && (
+              <p className="text-xs text-fg-muted">
+                No class scheduled for this batch on this day. Pick a status to record an extra session.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2 pt-1">
               <Button variant="danger" onClick={() => handlePick('absent')} className="!py-4">✗ Absent</Button>
               <Button onClick={() => handlePick('present')} className="!py-4">✓ Present</Button>
