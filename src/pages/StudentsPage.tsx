@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { PageHeader, Card, Button, Modal, TextInput, Label, Pill, EmptyState } from '../components/ui';
-import { findOrCreateRecurringSessions, batchRunsOnDate, formatISODate } from '../data/sessions';
+import { findOrCreateRecurringSessions, batchRunsOnDate, formatISODate, formatISODateLong, parseISODate } from '../data/sessions';
 import { todayISO } from '../data/storage';
+import { DAY_NAMES } from '../data/types';
 
 export function StudentsPage() {
   const { studentId } = useParams<{ studentId?: string }>();
@@ -457,38 +458,110 @@ function StudentDetail({ student, onSave, onArchive }: { student: { id: string; 
   const batches = useStore((s) => s.db.batches);
   const sessions = useStore((s) => s.db.sessions);
   const attendance = useStore((s) => s.db.attendance);
+  const ensureSession = useStore((s) => s.ensureSessionForBatchDate);
+  const setAttendance = useStore((s) => s.setAttendance);
   const [name, setName] = useState(student.name);
   const [parent, setParent] = useState(student.parentContact ?? '');
   const [showManageBatches, setShowManageBatches] = useState(false);
 
   const studentBatches = memberships.filter((m) => m.studentId === student.id && m.removedDate === null);
+  const activeStudentBatches = studentBatches
+    .map((m) => batches.find((b) => b.id === m.batchId))
+    .filter((b): b is NonNullable<typeof b> => Boolean(b) && !b!.archivedAt);
 
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const startWeekday = firstDay.getDay();
-  const daysInMonth = lastDay.getDate();
+  // Calendar view state — independent of 'today', defaults to current month
+  const todayDate = new Date();
+  const [viewYear, setViewYear] = useState(todayDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(todayDate.getMonth()); // 0-indexed
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
 
-  const classDates = new Set<string>();
-  for (const m of studentBatches) {
-    const batch = batches.find((b) => b.id === m.batchId);
-    if (!batch) continue;
-    const fromStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-    const toStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
-    const list = findOrCreateRecurringSessions(batch, sessions, fromStr, toStr);
-    for (const s of list) classDates.add(s.date);
-  }
+  const isoOfDay = (day: number) =>
+    `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-  const attendanceForDate = (date: string): 'present' | 'absent' | null => {
-    const sessionsOnDate = sessions.filter((s) => s.date === date && studentBatches.some((m) => m.batchId === m.batchId && m.removedDate === null));
-    for (const sess of sessionsOnDate) {
-      const a = attendance.find((att) => att.sessionId === sess.id && att.studentId === student.id);
-      if (a) return a.status;
+  // Pre-compute (date, batch) -> session for every day in the month, for every student batch.
+  // Each (date, batch) row can be tapped once attendance is recorded.
+  const calendarRows = useMemo(() => {
+    const out: Array<{
+      date: string;
+      batchId: string;
+      batchName: string;
+      sessionId: string;
+      day: number;
+      status: 'present' | 'absent' | null;
+    }> = [];
+    const fromStr = isoOfDay(1);
+    const toStr = isoOfDay(daysInMonth);
+    for (const batch of activeStudentBatches) {
+      const sessionList = findOrCreateRecurringSessions(batch, sessions, fromStr, toStr);
+      for (const sess of sessionList) {
+        const realSession =
+          sess.id.startsWith('virtual-')
+            ? ensureSession(batch.id, sess.date)
+            : sess;
+        const rec = attendance.find((a) => a.sessionId === realSession.id && a.studentId === student.id);
+        out.push({
+          date: sess.date,
+          batchId: batch.id,
+          batchName: batch.name,
+          sessionId: realSession.id,
+          day: parseISODate(sess.date).getDate(),
+          status: rec?.status ?? null,
+        });
+      }
     }
-    return null;
+    // Stable order: by date, then batch name
+    out.sort((a, b) => (a.date === b.date ? a.batchName.localeCompare(b.batchName) : a.date.localeCompare(b.date)));
+    return out;
+  }, [activeStudentBatches, sessions, attendance, viewYear, viewMonth, daysInMonth, student.id, ensureSession]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Batch context — per-batch totals for this month
+  const batchContext = useMemo(() => {
+    const fromStr = isoOfDay(1);
+    const toStr = isoOfDay(daysInMonth);
+    return activeStudentBatches.map((batch) => {
+      const total = findOrCreateRecurringSessions(batch, sessions, fromStr, toStr).length;
+      return { batch, total };
+    });
+  }, [activeStudentBatches, sessions, viewYear, viewMonth, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [pickerFor, setPickerFor] = useState<{ sessionId: string; date: string; batchName: string } | null>(null);
+
+  const handleCellTap = (row: { sessionId: string; date: string; batchName: string; status: 'present' | 'absent' | null }) => {
+    setPickerFor({ sessionId: row.sessionId, date: row.date, batchName: row.batchName });
   };
+
+  const handlePick = (status: 'present' | 'absent') => {
+    if (!pickerFor) return;
+    setAttendance(pickerFor.sessionId, student.id, status);
+    setPickerFor(null);
+  };
+
+  const goPrev = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  };
+  const goNext = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+  const goToday = () => {
+    setViewYear(todayDate.getFullYear());
+    setViewMonth(todayDate.getMonth());
+  };
+  const isCurrentMonth =
+    viewYear === todayDate.getFullYear() && viewMonth === todayDate.getMonth();
 
   return (
     <div className="space-y-5">
@@ -519,35 +592,88 @@ function StudentDetail({ student, onSave, onArchive }: { student: { id: string; 
       </div>
 
       <div>
-        <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted mb-2">
-          {firstDay.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-        </h4>
-        <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-wider text-fg-muted mb-1">
-          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <div key={i}>{d}</div>)}
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted">Calendar</h4>
+          <div className="flex items-center gap-2">
+            <button onClick={goPrev} aria-label="Previous month" className="w-7 h-7 rounded-full bg-bg-card border border-border text-fg-secondary hover:text-fg-primary">‹</button>
+            <button onClick={goToday} disabled={isCurrentMonth} className="text-[10px] uppercase tracking-wider font-bold text-neon-green disabled:opacity-40 disabled:cursor-default">Today</button>
+            <button onClick={goNext} aria-label="Next month" className="w-7 h-7 rounded-full bg-bg-card border border-border text-fg-secondary hover:text-fg-primary">›</button>
+          </div>
         </div>
-        <div className="grid grid-cols-7 gap-1">
-          {Array.from({ length: startWeekday }).map((_, i) => <div key={`pad-${i}`} />)}
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1;
-            const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const hadClass = classDates.has(iso);
-            const status = attendanceForDate(iso);
-            let bg = 'bg-bg-card';
-            if (hadClass) {
-              if (status === 'present') bg = 'bg-neon-green';
-              else if (status === 'absent') bg = 'bg-neon-pink';
-              else bg = 'bg-bg-card border border-border';
-            }
-            return (
-              <div key={iso} className={`aspect-square rounded-md ${bg} flex items-center justify-center text-xs font-bold ${status ? 'text-bg-base' : hadClass ? 'text-fg-secondary' : 'text-fg-muted'}`}>
-                {day}
+        <div className="text-sm font-semibold mb-3">{monthLabel}</div>
+
+        {batchContext.length > 0 && (
+          <div className="space-y-1 mb-4">
+            {batchContext.map(({ batch, total }) => (
+              <div key={batch.id} className="flex items-center justify-between text-xs">
+                <span className="text-fg-secondary truncate">
+                  {batch.name} <span className="text-fg-muted">· {batch.daysOfWeek.map((d) => DAY_NAMES[d]).join('·')}</span>
+                </span>
+                <span className="text-fg-muted">{total} class{total === 1 ? '' : 'es'}</span>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {calendarRows.length === 0 ? (
+          <div className="text-sm text-fg-muted py-3">No classes scheduled for this month.</div>
+        ) : (
+          <div className="overflow-x-auto scrollbar-hide -mx-4 px-4">
+            <div className="min-w-[640px]">
+              {/* Day-number header row */}
+              <div className="grid mb-1" style={{ gridTemplateColumns: `120px repeat(${daysInMonth}, minmax(20px, 1fr))` }}>
+                <div />
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => (
+                  <div key={d} className="text-center text-[9px] text-fg-muted">{d}</div>
+                ))}
+              </div>
+              {/* One row per (date × batch) */}
+              {calendarRows.map((row, idx) => {
+                const isFirstOfDate = idx === 0 || calendarRows[idx - 1].date !== row.date;
+                return (
+                  <div
+                    key={`${row.date}-${row.batchId}`}
+                    className="grid items-center"
+                    style={{ gridTemplateColumns: `120px repeat(${daysInMonth}, minmax(20px, 1fr))` }}
+                  >
+                    <div className="text-[10px] text-fg-secondary truncate pr-2 flex items-center gap-1">
+                      {isFirstOfDate && (
+                        <span className="text-fg-muted font-bold">{parseISODate(row.date).toLocaleDateString(undefined, { weekday: 'short' })}</span>
+                      )}
+                      <span className="truncate">{row.batchName}</span>
+                    </div>
+                    {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
+                      if (d !== row.day) {
+                        return <div key={d} className="h-7" />;
+                      }
+                      const bg =
+                        row.status === 'present'
+                          ? 'bg-neon-green text-bg-base'
+                          : row.status === 'absent'
+                          ? 'bg-neon-pink text-bg-base'
+                          : 'bg-bg-card border border-border text-fg-secondary';
+                      return (
+                        <button
+                          key={d}
+                          onClick={() => handleCellTap(row)}
+                          className={`h-7 mx-0.5 rounded ${bg} flex items-center justify-center text-[10px] font-bold active:scale-95`}
+                          aria-label={`${row.date} ${row.batchName} ${row.status ?? 'unmarked'}`}
+                        >
+                          {row.status === 'present' ? '✓' : row.status === 'absent' ? '✗' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-3 mt-3 text-[10px] uppercase tracking-wider text-fg-muted">
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-neon-green" />Present</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-neon-pink" />Absent</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded border border-border bg-bg-card" />Unmarked</div>
         </div>
       </div>
 
@@ -568,6 +694,20 @@ function StudentDetail({ student, onSave, onArchive }: { student: { id: string; 
         studentId={student.id}
         studentName={student.name}
       />
+
+      {pickerFor && (
+        <Modal open onClose={() => setPickerFor(null)} title="Mark attendance">
+          <div className="space-y-3">
+            <div className="text-sm text-fg-secondary">
+              {formatISODateLong(pickerFor.date)} · {pickerFor.batchName}
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Button variant="danger" onClick={() => handlePick('absent')} className="!py-4">✗ Absent</Button>
+              <Button onClick={() => handlePick('present')} className="!py-4">✓ Present</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
