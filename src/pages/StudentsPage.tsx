@@ -223,6 +223,7 @@ export function StudentsPage() {
         <Modal open onClose={() => navigate('/students')} title={selected.name}>
           <StudentDetail
             student={selected}
+            initialDate={searchParams.get('date')}
             onSave={(patch) => {
               updateStudent(selected.id, patch);
               navigate('/students');
@@ -453,7 +454,7 @@ function ManageBatchesModal({
   );
 }
 
-function StudentDetail({ student, onSave, onArchive }: { student: { id: string; name: string; parentContact?: string; dateJoined: string }; onSave: (patch: { name: string; parentContact?: string }) => void; onArchive: () => void }) {
+function StudentDetail({ student, onSave, onArchive, initialDate }: { student: { id: string; name: string; parentContact?: string; dateJoined: string }; onSave: (patch: { name: string; parentContact?: string }) => void; onArchive: () => void; initialDate?: string | null }) {
   const memberships = useStore((s) => s.db.memberships);
   const batches = useStore((s) => s.db.batches);
   const sessions = useStore((s) => s.db.sessions);
@@ -469,10 +470,11 @@ function StudentDetail({ student, onSave, onArchive }: { student: { id: string; 
     .map((m) => batches.find((b) => b.id === m.batchId))
     .filter((b): b is NonNullable<typeof b> => Boolean(b) && !b!.archivedAt);
 
-  // Calendar view state — independent of 'today', defaults to current month
+  // Calendar view state — independent of 'today', defaults to current month or the date passed via URL.
   const todayDate = new Date();
-  const [viewYear, setViewYear] = useState(todayDate.getFullYear());
-  const [viewMonth, setViewMonth] = useState(todayDate.getMonth()); // 0-indexed
+  const initial = initialDate ? parseISODate(initialDate) : null;
+  const [viewYear, setViewYear] = useState(initial ? initial.getFullYear() : todayDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initial ? initial.getMonth() : todayDate.getMonth()); // 0-indexed
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(undefined, {
     month: 'long',

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { PageHeader, Card, SectionTitle, Pill, Button, Modal, Label, TextInput } from '../components/ui';
+import { MonthlyAttendanceGrid } from '../components/MonthlyAttendanceGrid';
+import { StudentsPerBatchDonut } from '../components/StudentsPerBatchDonut';
 import { batchRunsOnDate, findOrCreateRecurringSessions, sessionEnded, isToday } from '../data/sessions';
 import { todayISO } from '../data/storage';
 
@@ -11,7 +13,7 @@ export function HomePage() {
   const batches = useStore((s) => s.db.batches);
   const students = useStore((s) => s.db.students);
   const sessions = useStore((s) => s.db.sessions);
-  const attendance = useStore((s) => s.db.attendance);
+  
   const ensureSession = useStore((s) => s.ensureSessionForBatchDate);
   const addOneOffSession = useStore((s) => s.addOneOffSession);
 
@@ -37,36 +39,6 @@ export function HomePage() {
     return out;
   }, [activeBatches, today, sessions, ensureSession]);
 
-  const monthStart = today.slice(0, 7) + '-01';
-  const sessionsThisMonth = useMemo(() => {
-    const out = findOrCreateRecurringSessions(
-      // virtual, just to iterate all batches in one pass
-      { id: '', teacherId: '', name: '', daysOfWeek: [], startTime: '', endTime: '', createdAt: '' } as never,
-      sessions,
-      monthStart,
-      today
-    ).filter((s) => s.batchId) as Array<{ batchId: string }>;
-    void out;
-    // Manual iteration
-    const set = new Set<string>();
-    for (const batch of activeBatches) {
-      const list = findOrCreateRecurringSessions(batch, sessions, monthStart, today);
-      for (const s of list) set.add(s.id);
-    }
-    return set;
-  }, [activeBatches, sessions, monthStart, today]);
-
-  const attendanceRate = useMemo(() => {
-    // Overall attendance rate this month, cancelled sessions excluded
-    const idList = [...sessionsThisMonth];
-    const validSessions = sessions.filter((s) => idList.includes(s.id) && s.status !== 'cancelled');
-    if (validSessions.length === 0) return null;
-    const total = attendance.filter((a) => validSessions.some((s) => s.id === a.sessionId)).length;
-    const present = attendance.filter((a) => a.status === 'present' && validSessions.some((s) => s.id === a.sessionId)).length;
-    if (total === 0) return null;
-    return Math.round((present / total) * 100);
-  }, [sessionsThisMonth, attendance, sessions]);
-
   const pendingCount = useMemo(() => {
     const now = new Date();
     let count = 0;
@@ -78,6 +50,26 @@ export function HomePage() {
     }
     return count;
   }, [activeBatches, sessions, today]);
+
+  // Classes done this month = recurring sessions whose endTime < now (excluding cancelled) +
+  // all one-off sessions this month regardless of status. PRD §4.6.
+  const classesDone = useMemo(() => {
+    const now = new Date();
+    const monthStartStr = today.slice(0, 7) + '-01';
+    let count = 0;
+    for (const sess of sessions) {
+      if (!sess.date.startsWith(today.slice(0, 7))) continue; // this month
+      if (sess.type === 'one-off') {
+        count++;
+        continue;
+      }
+      if (sess.type === 'recurring' && sess.status !== 'cancelled' && sessionEnded(sess, now)) {
+        count++;
+      }
+    }
+    void monthStartStr;
+    return count;
+  }, [sessions, today]);
 
   return (
     <div className="px-4 pb-12">
@@ -101,23 +93,12 @@ export function HomePage() {
       <div className="grid grid-cols-3 gap-2 mb-6">
         <StatCard label="Students" value={activeStudents.length} />
         <StatCard label="Batches" value={activeBatches.length} />
-        <StatCard label="This Month" value={sessionsThisMonth.size} />
+        <StatCard label="Classes done" value={classesDone} />
       </div>
 
-      {attendanceRate !== null && (
-        <Card className="mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs text-fg-muted uppercase tracking-wider font-bold">Attendance this month</div>
-              <div className="text-4xl font-extrabold mt-1 neon-text-green">{attendanceRate}%</div>
-            </div>
-            <div className="text-6xl opacity-30">🛹</div>
-          </div>
-          <div className="mt-3 h-2 bg-bg-base rounded-full overflow-hidden">
-            <div className="h-full bg-neon-green transition-all" style={{ width: `${attendanceRate}%` }} />
-          </div>
-        </Card>
-      )}
+      <MonthlyAttendanceGrid />
+
+      <StudentsPerBatchDonut />
 
       <SectionTitle
         action={
