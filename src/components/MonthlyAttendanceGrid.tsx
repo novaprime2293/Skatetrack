@@ -174,9 +174,14 @@ export function MonthlyAttendanceGrid() {
                       <button
                         key={d}
                         onClick={() => navigate(`/students/${row.id}?date=${dateStr}`)}
-                        className={`h-6 mx-0.5 rounded ${cellClasses(c)} flex items-center justify-center text-[10px] font-bold active:scale-95`}
+                        className={`relative h-6 mx-0.5 rounded ${cellClasses(c)} flex items-center justify-center text-[10px] font-bold active:scale-95`}
                         title={`${row.name} · ${parseISODate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${c}`}
                       >
+                        {/* Batch-day marker — small cyan dot at the top, present on every scheduled class day regardless of attendance status. */}
+                        <span
+                          aria-hidden="true"
+                          className="absolute top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neon-cyan/70"
+                        />
                         {cellLabel(c)}
                       </button>
                     );
@@ -188,10 +193,11 @@ export function MonthlyAttendanceGrid() {
         </div>
       )}
 
-      <div className="flex gap-3 mt-3 text-[10px] uppercase tracking-wider text-fg-muted">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-[10px] uppercase tracking-wider text-fg-muted">
         <div className="flex items-center gap-1"><span className="font-bold text-neon-green">G</span>All present</div>
         <div className="flex items-center gap-1"><span className="font-bold text-neon-pink">R</span>All absent</div>
         <div className="flex items-center gap-1"><span className="font-bold">M</span>Mixed</div>
+        <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-cyan/70" />Class day</div>
       </div>
     </div>
   );

@@ -658,9 +658,14 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
                         <button
                           key={d}
                           onClick={() => handleCellTap(row)}
-                          className={`h-7 mx-0.5 rounded ${bg} flex items-center justify-center text-[10px] font-bold active:scale-95`}
+                          className={`relative h-7 mx-0.5 rounded ${bg} flex items-center justify-center text-[10px] font-bold active:scale-95`}
                           aria-label={`${row.date} ${row.batchName} ${row.status ?? 'unmarked'}`}
                         >
+                          {/* Batch-day marker — small cyan dot at the top, present on every scheduled class day regardless of attendance status. */}
+                          <span
+                            aria-hidden="true"
+                            className="absolute top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neon-cyan/70"
+                          />
                           {row.status === 'present' ? '✓' : row.status === 'absent' ? '✗' : ''}
                         </button>
                       );
