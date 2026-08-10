@@ -56,6 +56,7 @@ interface StoreState {
   addOneOffSession: (batchId: string, date: string, startTime: string, endTime: string) => Session;
   cancelSession: (sessionId: string, reasonPreset: string, reasonText?: string) => void;
   uncancelSession: (sessionId: string) => void;
+  deleteOneOffSession: (sessionId: string) => void;
 
   setAttendance: (sessionId: string, studentId: string, status: 'present' | 'absent') => void;
   bulkSetAttendance: (sessionId: string, records: Array<{ studentId: string; status: 'present' | 'absent' }>) => void;
@@ -288,6 +289,21 @@ export const useStore = create<StoreState>((set, get) => ({
             ? { ...sess, status: 'scheduled' as const, cancelReasonPreset: null, cancelReason: null }
             : sess
         ),
+      };
+      persist(next);
+      return { db: next };
+    });
+  },
+
+  deleteOneOffSession: (sessionId) => {
+    set((s) => {
+      const target = s.db.sessions.find((sess) => sess.id === sessionId);
+      // Guard: only delete one-off sessions, and only before attendance is marked.
+      if (!target || target.type !== 'one-off' || target.status !== 'scheduled') return {};
+      const next = {
+        ...s.db,
+        sessions: s.db.sessions.filter((sess) => sess.id !== sessionId),
+        attendance: s.db.attendance.filter((a) => a.sessionId !== sessionId),
       };
       persist(next);
       return { db: next };

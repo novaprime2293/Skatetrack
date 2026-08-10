@@ -17,6 +17,7 @@ export function BatchesPage() {
   const addMembership = useStore((s) => s.addMembership);
   const removeMembership = useStore((s) => s.removeMembership);
   const addOneOffSession = useStore((s) => s.addOneOffSession);
+  const deleteOneOffSession = useStore((s) => s.deleteOneOffSession);
 
   const [showCreate, setShowCreate] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -110,6 +111,7 @@ export function BatchesPage() {
               setDetailId(null);
               navigate(`/attendance/${s.id}`);
             }}
+            onDeleteOneOff={(sessionId) => deleteOneOffSession(sessionId)}
             onMarkSession={(sessionId) => {
               setDetailId(null);
               navigate(`/attendance/${sessionId}`);
@@ -268,6 +270,7 @@ function BatchDetail({
   onArchive,
   onUnarchive,
   onAddOneOff,
+  onDeleteOneOff,
   onMarkSession,
 }: {
   batch: { id: string; name: string; startTime: string; endTime: string; daysOfWeek: number[]; archivedAt?: string | null };
@@ -280,6 +283,7 @@ function BatchDetail({
   onArchive: () => void;
   onUnarchive: () => void;
   onAddOneOff: (date: string, start: string, end: string) => void;
+  onDeleteOneOff: (sessionId: string) => void;
   onMarkSession: (sessionId: string) => void;
 }) {
   const [showAddStudent, setShowAddStudent] = useState(false);
@@ -320,20 +324,47 @@ function BatchDetail({
       <div>
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted">Recent sessions</h4>
-          <button onClick={() => setShowOneOff(true)} className="text-xs text-neon-green uppercase tracking-wider font-bold">+ One-off</button>
+          <button onClick={() => setShowOneOff(true)} className="text-xs text-neon-green uppercase tracking-wider font-bold">+ Add special class</button>
         </div>
         {sessions.length === 0 ? (
           <div className="text-sm text-fg-muted py-3">No sessions yet.</div>
         ) : (
           <div className="space-y-1.5">
-            {sessions.map((s) => (
-              <div key={s.id} className="flex items-center justify-between bg-bg-card border border-border rounded-xl px-3 py-2 cursor-pointer" onClick={() => onMarkSession(s.id)}>
-                <span className="text-sm">{s.date} {s.type === 'one-off' && <span className="text-xs text-fg-muted">(one-off)</span>}</span>
-                <Pill color={s.status === 'attendance_marked' ? 'green' : s.status === 'cancelled' ? 'muted' : 'yellow'}>
-                  {s.status === 'attendance_marked' ? 'Marked' : s.status === 'cancelled' ? 'Cancelled' : 'Pending'}
-                </Pill>
-              </div>
-            ))}
+            {sessions.map((s) => {
+              const isSpecial = s.type === 'one-off';
+              const canDelete = isSpecial && s.status === 'scheduled';
+              return (
+                <div
+                  key={s.id}
+                  className={`flex items-center justify-between bg-bg-card border rounded-xl px-3 py-2 ${isSpecial ? 'border-neon-orange/40' : 'border-border'} ${!canDelete ? 'cursor-pointer' : ''}`}
+                  onClick={canDelete ? undefined : () => onMarkSession(s.id)}
+                >
+                  <span className="text-sm flex items-center gap-2">
+                    {s.date}
+                    {isSpecial && (
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-neon-orange border border-neon-orange/40 rounded-full px-1.5 py-0.5">
+                        Special
+                      </span>
+                    )}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Pill color={s.status === 'attendance_marked' ? 'green' : s.status === 'cancelled' ? 'muted' : 'yellow'}>
+                      {s.status === 'attendance_marked' ? 'Marked' : s.status === 'cancelled' ? 'Cancelled' : 'Pending'}
+                    </Pill>
+                    {canDelete && (
+                      <button
+                        onClick={() => {
+                          if (confirm(`Delete this special class on ${s.date}?`)) onDeleteOneOff(s.id);
+                        }}
+                        className="text-xs text-fg-muted hover:text-neon-pink uppercase tracking-wider font-bold"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -385,7 +416,7 @@ function OneOffModal({ batchStart, batchEnd, onClose, onCreate }: { batchStart: 
   const [end, setEnd] = useState(batchEnd);
 
   return (
-    <Modal open onClose={onClose} title="Add one-off session">
+    <Modal open onClose={onClose} title="Add special class">
       <div className="space-y-3">
         <div>
           <Label>Date</Label>

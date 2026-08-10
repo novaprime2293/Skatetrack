@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../data/store';
-import { PageHeader, Card, SectionTitle, Pill } from '../components/ui';
+import { PageHeader, Card, SectionTitle, Pill, Button, Modal, Label, TextInput } from '../components/ui';
 import { batchRunsOnDate, findOrCreateRecurringSessions, sessionEnded, isToday } from '../data/sessions';
 import { todayISO } from '../data/storage';
 
@@ -13,6 +13,9 @@ export function HomePage() {
   const sessions = useStore((s) => s.db.sessions);
   const attendance = useStore((s) => s.db.attendance);
   const ensureSession = useStore((s) => s.ensureSessionForBatchDate);
+  const addOneOffSession = useStore((s) => s.addOneOffSession);
+
+  const [showAddSpecial, setShowAddSpecial] = useState(false);
 
   const today = todayISO();
   const activeBatches = batches.filter((b) => !b.archivedAt);
@@ -116,7 +119,23 @@ export function HomePage() {
         </Card>
       )}
 
-      <SectionTitle action={<span className="text-xs text-fg-muted">{today}</span>}>Today's classes</SectionTitle>
+      <SectionTitle
+        action={
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-fg-muted">{today}</span>
+            {activeBatches.length > 0 && (
+              <button
+                onClick={() => setShowAddSpecial(true)}
+                className="text-xs text-neon-green uppercase tracking-wider font-bold"
+              >
+                + Add special class
+              </button>
+            )}
+          </div>
+        }
+      >
+        Today's classes
+      </SectionTitle>
       {todaysSessions.length === 0 ? (
         <Card>
           <div className="text-center py-6 text-fg-muted text-sm">No classes scheduled today.</div>
@@ -147,7 +166,93 @@ export function HomePage() {
           Settings & backup →
         </button>
       </div>
+
+      {showAddSpecial && (
+        <AddSpecialClassModal
+          activeBatches={activeBatches}
+          onClose={() => setShowAddSpecial(false)}
+          onCreate={(batchId, date, start, end) => {
+            const s = addOneOffSession(batchId, date, start, end);
+            setShowAddSpecial(false);
+            navigate(`/attendance/${s.id}`);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function AddSpecialClassModal({
+  activeBatches,
+  onClose,
+  onCreate,
+}: {
+  activeBatches: Array<{ id: string; name: string; startTime: string; endTime: string; daysOfWeek: number[] }>;
+  onClose: () => void;
+  onCreate: (batchId: string, date: string, start: string, end: string) => void;
+}) {
+  const [batchId, setBatchId] = useState<string>(activeBatches[0]?.id ?? '');
+  const [date, setDate] = useState(todayISO());
+  const [start, setStart] = useState(activeBatches[0]?.startTime ?? '16:00');
+  const [end, setEnd] = useState(activeBatches[0]?.endTime ?? '17:00');
+
+  // When user picks a different batch, seed start/end with that batch's normal times.
+  const handlePickBatch = (id: string) => {
+    setBatchId(id);
+    const b = activeBatches.find((bb) => bb.id === id);
+    if (b) {
+      setStart(b.startTime);
+      setEnd(b.endTime);
+    }
+  };
+
+  if (activeBatches.length === 0) return null;
+
+  return (
+    <Modal open onClose={onClose} title="Add special class">
+      <div className="space-y-3">
+        <div>
+          <Label>Which batch?</Label>
+          <div className="space-y-1.5 max-h-40 overflow-y-auto scrollbar-hide">
+            {activeBatches.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => handlePickBatch(b.id)}
+                className={`w-full text-left rounded-xl border px-3 py-2.5 text-sm transition-colors ${
+                  batchId === b.id ? 'bg-neon-green/10 border-neon-green/50 text-fg-primary' : 'bg-bg-card border-border text-fg-secondary'
+                }`}
+              >
+                <div className="font-medium">{b.name}</div>
+                <div className="text-[11px] text-fg-muted">
+                  {b.daysOfWeek.map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(' · ')} · {b.startTime}–{b.endTime}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <Label>Date</Label>
+          <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label>Start</Label>
+            <TextInput type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+          </div>
+          <div>
+            <Label>End</Label>
+            <TextInput type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button onClick={() => onCreate(batchId, date, start, end)} className="flex-1" disabled={!batchId}>
+            Add
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
