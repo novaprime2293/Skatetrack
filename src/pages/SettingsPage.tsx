@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { PageHeader, Card, Button, Modal, Label, TextInput, TextArea } from '../components/ui';
@@ -8,6 +8,7 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const teacher = useStore((s) => s.db.teacher);
   const updateTeacherName = useStore((s) => s.updateTeacherName);
+  const updateMonthlyTarget = useStore((s) => s.updateMonthlyTarget);
   const exportJSON = useStore((s) => s.exportJSON);
   const importJSON = useStore((s) => s.importJSON);
   const resetAll = useStore((s) => s.resetAll);
@@ -17,6 +18,15 @@ export function SettingsPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
   const [name, setName] = useState(teacher.name);
+  const [monthlyTarget, setMonthlyTarget] = useState<string>(String(teacher.monthlyTarget));
+
+  // Keep local input in sync if the underlying value changes externally (e.g. after import).
+  useEffect(() => {
+    setMonthlyTarget(String(teacher.monthlyTarget));
+  }, [teacher.monthlyTarget]);
+  useEffect(() => {
+    setName(teacher.name);
+  }, [teacher.name]);
 
   const handleExport = () => {
     const json = exportJSON();
@@ -67,6 +77,43 @@ export function SettingsPage() {
           className="mt-2"
           onClick={() => updateTeacherName(name.trim() || 'Coach')}
           disabled={name.trim() === teacher.name}
+        >
+          Save
+        </Button>
+      </Card>
+
+      <Card className="mb-4 border-neon-cyan/40">
+        <div className="text-xs uppercase tracking-wider text-neon-cyan font-bold mb-1">Attendance goal</div>
+        <Label>Monthly minimum classes</Label>
+        <p className="text-xs text-fg-secondary mb-3">
+          How many classes a student should aim for each month. Charts will show how far each student is from this number. Exceeding it is fine.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={31}
+            value={monthlyTarget}
+            onChange={(e) => setMonthlyTarget(e.target.value)}
+            className="w-24 bg-bg-base border border-border rounded-xl px-4 py-3 text-fg-primary focus:outline-none focus:border-neon-cyan focus:ring-1 focus:ring-neon-cyan/50"
+            aria-label="Monthly minimum classes"
+          />
+          <span className="text-xs text-fg-muted">classes / month</span>
+        </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="mt-3"
+          onClick={() => {
+            const n = parseInt(monthlyTarget, 10);
+            if (Number.isFinite(n)) updateMonthlyTarget(n);
+          }}
+          disabled={
+            !monthlyTarget.trim() ||
+            (Number.isFinite(parseInt(monthlyTarget, 10)) &&
+              parseInt(monthlyTarget, 10) === teacher.monthlyTarget)
+          }
         >
           Save
         </Button>

@@ -16,7 +16,7 @@ export function ChartPage() {
   const attendance = useStore((s) => s.db.attendance);
   const students = useStore((s) => s.db.students);
   const memberships = useStore((s) => s.db.memberships);
-  const monthlyTarget = useStore((s) => s.db.teacher.monthlyTarget ?? 8);
+  const monthlyTarget = useStore((s) => s.db.teacher.monthlyTarget);
 
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());

@@ -23,6 +23,7 @@ function emptyDB(): DB {
       id: newId(),
       name: 'Coach',
       createdAt: nowISO(),
+      monthlyTarget: 8,
     },
     batches: [],
     students: [],
@@ -39,6 +40,7 @@ interface StoreState {
   hydrate: () => Promise<void>;
 
   updateTeacherName: (name: string) => void;
+  updateMonthlyTarget: (value: number) => void;
 
   addBatch: (input: Omit<Batch, 'id' | 'teacherId' | 'createdAt' | 'archivedAt'>) => Batch;
   updateBatch: (id: string, patch: Partial<Batch>) => void;
@@ -95,6 +97,16 @@ export const useStore = create<StoreState>((set, get) => ({
   updateTeacherName: (name) => {
     set((s) => {
       const next = { ...s.db, teacher: { ...s.db.teacher, name } };
+      persist(next);
+      return { db: next };
+    });
+  },
+
+  updateMonthlyTarget: (value) => {
+    // Clamp to sane bounds — same range the Settings input enforces (1..31).
+    const clamped = Math.max(1, Math.min(31, Math.round(value)));
+    set((s) => {
+      const next = { ...s.db, teacher: { ...s.db.teacher, monthlyTarget: clamped } };
       persist(next);
       return { db: next };
     });

@@ -7,8 +7,8 @@ export interface Teacher {
   id: ID;
   name: string;
   createdAt: string; // ISO
-  /** Monthly minimum classes — drives the Charts page bar chart. Defaults to 8 for existing users via loadDB migration. */
-  monthlyTarget?: number;
+  /** Monthly minimum classes — drives the Charts page bar chart. Migrated to 8 on load for existing users. */
+  monthlyTarget: number;
 }
 
 export interface Batch {

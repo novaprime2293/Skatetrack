@@ -42,6 +42,12 @@ export async function loadDB(): Promise<DB | null> {
       console.warn('Skatetrack: schema version mismatch in DB, ignoring snapshot');
       return null;
     }
+    // Forward-migration: ensure teacher.monthlyTarget exists. Added in v1.2.
+    // We don't bump schemaVersion because this is a non-breaking one-line addition —
+    // old snapshots that lack it get a sensible default (8) on load.
+    if (stored.teacher && stored.teacher.monthlyTarget === undefined) {
+      stored.teacher.monthlyTarget = 8;
+    }
     return stored;
   } catch (e) {
     console.error('Skatetrack: failed to load DB', e);
