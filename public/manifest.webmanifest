@@ -2,7 +2,7 @@
   "name": "Skatetrack",
   "short_name": "Skatetrack",
   "description": "Attendance tracking for skateboarding coaches",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0a0a0f",
