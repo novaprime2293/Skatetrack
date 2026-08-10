@@ -1,85 +1,120 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../data/store';
-import { PageHeader, Card, Pill, SectionTitle } from '../components/ui';
-import { findOrCreateRecurringSessions } from '../data/sessions';
+import { PageHeader, Card, EmptyState, Pill, SectionTitle } from '../components/ui';
 
-type Range = 'week' | 'month' | 'all';
+function startOfMonth(year: number, monthIdx: number): string {
+  return `${year}-${String(monthIdx + 1).padStart(2, '0')}-01`;
+}
+function endOfMonth(year: number, monthIdx: number): string {
+  const lastDay = new Date(year, monthIdx + 1, 0).getDate();
+  return `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
 
 export function ChartPage() {
-  const allBatches = useStore((s) => s.db.batches);
+  const batches = useStore((s) => s.db.batches);
   const sessions = useStore((s) => s.db.sessions);
   const attendance = useStore((s) => s.db.attendance);
   const students = useStore((s) => s.db.students);
-  const batches = useMemo(() => allBatches.filter((b) => !b.archivedAt), [allBatches]);
+  const memberships = useStore((s) => s.db.memberships);
+  const monthlyTarget = useStore((s) => s.db.teacher.monthlyTarget ?? 8);
 
-  const [range, setRange] = useState<Range>('month');
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-indexed
   const [batchFilter, setBatchFilter] = useState<string | null>(null);
 
-  const { from, to } = useMemo(() => {
-    const today = new Date();
-    const toIso = today.toISOString().slice(0, 10);
-    if (range === 'week') {
-      const from = new Date(today);
-      from.setDate(from.getDate() - 6);
-      return { from: from.toISOString().slice(0, 10), to: toIso };
-    }
-    if (range === 'month') {
-      const from = new Date(today);
-      from.setDate(from.getDate() - 29);
-      return { from: from.toISOString().slice(0, 10), to: toIso };
-    }
-    return { from: '2020-01-01', to: toIso };
-  }, [range]);
+  const from = startOfMonth(viewYear, viewMonth);
+  const to = endOfMonth(viewYear, viewMonth);
 
-  // Build "sessions to consider" — virtual + persisted — across the range
-  const allSessions = useMemo(() => {
-    const out: Array<{ id: string; batchId: string; date: string; status: string }> = [];
-    const filtered = batchFilter ? batches.filter((b) => b.id === batchFilter) : batches;
-    for (const b of filtered) {
-      const list = findOrCreateRecurringSessions(b, sessions, from, to);
-      for (const s of list) {
-        out.push({ id: s.id, batchId: s.batchId, date: s.date, status: s.status });
-      }
+  const goPrev = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
     }
-    return out.sort((a, b) => a.date.localeCompare(b.date));
-  }, [batches, sessions, from, to, batchFilter]);
+  };
+  const goNext = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+  const goToday = () => {
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth());
+  };
+  const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === today.getMonth();
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
 
-  // Per-batch stats
-  const perBatch = useMemo(() => {
-    const map = new Map<string, { batchId: string; batchName: string; total: number; present: number; absent: number; cancelled: number }>();
-    for (const b of batches) {
-      map.set(b.id, { batchId: b.id, batchName: b.name, total: 0, present: 0, absent: 0, cancelled: 0 });
-    }
-    for (const sess of allSessions) {
-      const entry = map.get(sess.batchId);
-      if (!entry) continue;
-      if (sess.status === 'cancelled') {
-        entry.cancelled++;
-        continue;
-      }
-      const sessionAtt = attendance.filter((a) => a.sessionId === sess.id);
-      if (sessionAtt.length === 0) continue;
-      entry.total++;
-      entry.present += sessionAtt.filter((a) => a.status === 'present').length;
-      entry.absent += sessionAtt.filter((a) => a.status === 'absent').length;
-    }
-    return [...map.values()].filter((e) => e.total + e.cancelled > 0);
-  }, [batches, allSessions, attendance]);
+  const activeBatches = useMemo(() => batches.filter((b) => !b.archivedAt), [batches]);
+  const activeStudents = useMemo(() => students.filter((s) => !s.archivedAt), [students]);
 
-  // Per-student ranking
-  const perStudent = useMemo(() => {
-    const map = new Map<string, { total: number; present: number; absent: number }>();
+  // Sessions that fall in the visible month. Exclude cancelled sessions from "done" counts (per spec §4.7).
+  // No virtual/materialized recurring sessions — only persisted sessions (one-offs included).
+  const sessionsInMonth = useMemo(
+    () => sessions.filter((s) => s.date >= from && s.date <= to && s.status !== 'cancelled'),
+    [sessions, from, to],
+  );
+  const sessionsInMonthById = useMemo(() => {
+    const map = new Map<string, (typeof sessions)[number]>();
+    for (const s of sessionsInMonth) map.set(s.id, s);
+    return map;
+  }, [sessionsInMonth]);
+
+  // Section 1 — Monthly target bar chart.
+  // Done = count of present AttendanceRecords for this student whose session is in the visible month
+  // and the session is not cancelled.
+  const monthlyProgress = useMemo(() => {
+    const doneByStudent = new Map<string, number>();
     for (const att of attendance) {
-      const sess = sessions.find((s) => s.id === att.sessionId);
-      if (!sess || sess.status === 'cancelled') continue;
-      if (sess.date < from || sess.date > to) continue;
-      const m = map.get(att.studentId) ?? { total: 0, present: 0, absent: 0 };
+      if (att.status !== 'present') continue;
+      const sess = sessionsInMonthById.get(att.sessionId);
+      if (!sess) continue;
+      doneByStudent.set(att.studentId, (doneByStudent.get(att.studentId) ?? 0) + 1);
+    }
+    const rows = activeStudents
+      .map((s) => {
+        const done = doneByStudent.get(s.id) ?? 0;
+        return { studentId: s.id, name: s.name, done };
+      })
+      // Students with no done classes go to the bottom of the chart (they're far from the minimum).
+      .sort((a, b) => a.done - b.done || a.name.localeCompare(b.name));
+    return rows;
+  }, [attendance, sessionsInMonthById, activeStudents]);
+
+  // Section 2 — Students ranked by attendance (present / total) over visible month.
+  // Applies the optional batch filter.
+  const perStudent = useMemo(() => {
+    // If a batch filter is active, restrict to sessions of that batch.
+    const scopedSessions = batchFilter
+      ? sessionsInMonth.filter((s) => s.batchId === batchFilter)
+      : sessionsInMonth;
+    const scopedSessionIds = new Set(scopedSessions.map((s) => s.id));
+
+    const acc = new Map<string, { total: number; present: number; absent: number }>();
+    for (const att of attendance) {
+      if (!scopedSessionIds.has(att.sessionId)) continue;
+      const m = acc.get(att.studentId) ?? { total: 0, present: 0, absent: 0 };
       m.total++;
       if (att.status === 'present') m.present++;
       else m.absent++;
-      map.set(att.studentId, m);
+      acc.set(att.studentId, m);
     }
-    const out = [...map.entries()]
+    // Limit ranked list to students actually in the filtered batch (when filtered).
+    const candidateIds = batchFilter
+      ? new Set(
+          memberships
+            .filter((m) => m.batchId === batchFilter && m.removedDate === null)
+            .map((m) => m.studentId)
+        )
+      : null;
+    return [...acc.entries()]
       .map(([studentId, stats]) => {
         const student = students.find((s) => s.id === studentId);
         return {
@@ -89,125 +124,135 @@ export function ChartPage() {
           rate: stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0,
         };
       })
-      .filter((r) => r.total > 0)
-      .sort((a, b) => a.rate - b.rate);
-    return out;
-  }, [attendance, sessions, students, from, to]);
-
-  // Week-over-week (last 8 weeks)
-  const trend = useMemo(() => {
-    const weeks: Array<{ label: string; rate: number | null; total: number; present: number }> = [];
-    const today = new Date();
-    for (let i = 7; i >= 0; i--) {
-      const weekEnd = new Date(today);
-      weekEnd.setDate(weekEnd.getDate() - i * 7);
-      const weekStart = new Date(weekEnd);
-      weekStart.setDate(weekStart.getDate() - 6);
-      const from = weekStart.toISOString().slice(0, 10);
-      const to = weekEnd.toISOString().slice(0, 10);
-      let total = 0;
-      let present = 0;
-      for (const att of attendance) {
-        const sess = sessions.find((s) => s.id === att.sessionId);
-        if (!sess || sess.status === 'cancelled') continue;
-        if (sess.date < from || sess.date > to) continue;
-        total++;
-        if (att.status === 'present') present++;
-      }
-      const rate = total > 0 ? Math.round((present / total) * 100) : null;
-      const label = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
-      weeks.push({ label, rate, total, present });
-    }
-    return weeks;
-  }, [attendance, sessions]);
+      .filter((r) => !candidateIds || candidateIds.has(r.studentId))
+      .sort((a, b) => a.rate - b.rate || a.name.localeCompare(b.name));
+  }, [attendance, sessionsInMonth, students, memberships, batchFilter]);
 
   return (
     <div className="px-4 pb-12">
-      <PageHeader title="Chart" subtitle="Attendance trends" />
+      <PageHeader title="Charts" subtitle="Classes done vs. monthly minimum" />
 
-      <Card className="mb-4">
-        <div className="flex gap-1.5 mb-3">
-          {(['week', 'month', 'all'] as Range[]).map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={`flex-1 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                range === r ? 'bg-neon-green text-bg-base border-neon-green' : 'bg-bg-card border-border text-fg-secondary'
-              }`}
-            >
-              {r === 'week' ? '7d' : r === 'month' ? '30d' : 'All'}
-            </button>
-          ))}
+      {/* Month selector */}
+      <Card className="mb-4 !p-3">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            onClick={goPrev}
+            aria-label="Previous month"
+            className="w-9 h-9 rounded-full bg-bg-card border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
+          >
+            �
+          </button>
+          <div className="flex-1 text-center">
+            <div className="text-base font-semibold">{monthLabel}</div>
+          </div>
+          <button
+            onClick={goNext}
+            aria-label="Next month"
+            className="w-9 h-9 rounded-full bg-bg-card border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
+          >
+            ›
+          </button>
         </div>
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-1">
+        <div className="mt-2 flex justify-center">
+          <button
+            onClick={goToday}
+            disabled={isCurrentMonth}
+            className="text-[10px] uppercase tracking-wider font-bold text-neon-green disabled:opacity-40 disabled:cursor-default"
+          >
+            Today
+          </button>
+        </div>
+      </Card>
+
+      {/* Section 1 — Monthly target bar chart */}
+      <SectionTitle action={<span className="text-[10px] text-fg-muted">Target: {monthlyTarget}/mo</span>}>
+        Classes this month
+      </SectionTitle>
+      {activeStudents.length === 0 ? (
+        <EmptyState
+          icon={<span className="text-3xl">📊</span>}
+          title="No active students yet"
+          body="Add a student to see their progress against the monthly minimum."
+        />
+      ) : (
+        <Card className="mb-6">
+          <div className="space-y-3">
+            {monthlyProgress.map((row) => {
+              const pct = Math.min(100, Math.round((row.done / monthlyTarget) * 100));
+              const hit = row.done >= monthlyTarget;
+              return (
+                <div key={row.studentId} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium truncate min-w-0">{row.name}</div>
+                    <div className="text-[11px] text-fg-secondary whitespace-nowrap">
+                      {hit ? (
+                        <>
+                          <span className="text-neon-green font-bold">{row.done} done</span>
+                          <span className="ml-1">· ✓ Hit minimum</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-bold">{row.done} done</span>
+                          <span className="ml-1">
+                            · {monthlyTarget - row.done} more to hit minimum
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="h-2 rounded-full bg-bg-base overflow-hidden">
+                    <div
+                      className="h-full bg-neon-green transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 pt-3 border-t border-border flex items-center gap-2 text-[10px] text-fg-muted">
+            <span className="inline-block w-3 h-3 rounded bg-neon-green" />
+            <span>Each bar fills toward the {monthlyTarget}-class minimum. Above the minimum shows “Hit minimum”.</span>
+          </div>
+        </Card>
+      )}
+
+      {/* Section 2 — Students ranked by attendance */}
+      <SectionTitle>Students ranked</SectionTitle>
+
+      {/* Optional batch filter (applies to ranked list only) */}
+      {activeBatches.length > 0 && (
+        <div className="mb-3 flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4">
           <button
             onClick={() => setBatchFilter(null)}
-            className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border whitespace-nowrap ${
-              batchFilter === null ? 'bg-neon-cyan text-bg-base border-neon-cyan' : 'bg-bg-card border-border text-fg-secondary'
+            className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border whitespace-nowrap ${
+              batchFilter === null
+                ? 'bg-neon-cyan text-bg-base border-neon-cyan'
+                : 'bg-bg-card border-border text-fg-secondary'
             }`}
           >
             All batches
           </button>
-          {batches.map((b) => (
+          {activeBatches.map((b) => (
             <button
               key={b.id}
               onClick={() => setBatchFilter(b.id)}
-              className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border whitespace-nowrap ${
-                batchFilter === b.id ? 'bg-neon-cyan text-bg-base border-neon-cyan' : 'bg-bg-card border-border text-fg-secondary'
+              className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border whitespace-nowrap ${
+                batchFilter === b.id
+                  ? 'bg-neon-cyan text-bg-base border-neon-cyan'
+                  : 'bg-bg-card border-border text-fg-secondary'
               }`}
             >
               {b.name}
             </button>
           ))}
         </div>
-      </Card>
-
-      <SectionTitle>Week-over-week</SectionTitle>
-      <Card className="mb-6">
-        <div className="flex items-end justify-between gap-1 h-32">
-          {trend.map((w, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <div className="text-[10px] font-bold text-neon-green">{w.rate !== null ? `${w.rate}%` : ''}</div>
-              <div className="w-full bg-bg-base rounded-md relative overflow-hidden" style={{ height: '80px' }}>
-                <div
-                  className="absolute bottom-0 left-0 right-0 bg-neon-green transition-all"
-                  style={{ height: `${w.rate ?? 0}%`, opacity: w.rate === null ? 0.2 : 0.8 }}
-                />
-              </div>
-              <div className="text-[9px] text-fg-muted whitespace-nowrap">{w.label}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <SectionTitle>By batch</SectionTitle>
-      {perBatch.length === 0 ? (
-        <Card><div className="text-sm text-fg-muted text-center py-4">No attendance data yet.</div></Card>
-      ) : (
-        <div className="space-y-2 mb-6">
-          {perBatch.map((b) => {
-            const rate = b.total > 0 ? Math.round((b.present / (b.present + b.absent)) * 100) : 0;
-            return (
-              <Card key={b.batchId}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-semibold truncate">{b.batchName}</div>
-                  <Pill color={rate >= 80 ? 'green' : rate >= 60 ? 'yellow' : 'pink'}>{rate}%</Pill>
-                </div>
-                <div className="h-1.5 bg-bg-base rounded-full overflow-hidden">
-                  <div className="h-full bg-neon-green transition-all" style={{ width: `${rate}%` }} />
-                </div>
-                <div className="text-xs text-fg-muted mt-2">
-                  {b.present} present · {b.absent} absent · {b.cancelled} cancelled · {b.total} sessions
-                </div>
-              </Card>
-            );
-          })}
-        </div>
       )}
 
-      <SectionTitle>Students ranked by attendance</SectionTitle>
       {perStudent.length === 0 ? (
-        <Card><div className="text-sm text-fg-muted text-center py-4">No attendance records yet.</div></Card>
+        <Card>
+          <div className="text-sm text-fg-muted text-center py-4">No attendance records this month yet.</div>
+        </Card>
       ) : (
         <div className="space-y-1.5">
           {perStudent.map((s) => (
@@ -215,7 +260,9 @@ export function ChartPage() {
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
                   <div className="font-medium truncate">{s.name}</div>
-                  <div className="text-xs text-fg-muted">{s.present}/{s.total} classes</div>
+                  <div className="text-xs text-fg-muted">
+                    {s.present}/{s.total} classes
+                  </div>
                 </div>
                 <Pill color={s.rate >= 80 ? 'green' : s.rate >= 60 ? 'yellow' : 'pink'}>{s.rate}%</Pill>
               </div>
