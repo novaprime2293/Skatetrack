@@ -209,10 +209,12 @@ export function StudentsPage() {
       <CreateStudentModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreate={(input) => {
+        batches={activeBatches}
+        defaultBatchId={batchFilter}
+        onCreate={(input, batchId) => {
           const s = addStudent(input);
+          if (batchId) addMembership(batchId, s.id);
           setShowCreate(false);
-          if (batchFilter) addMembership(batchFilter, s.id);
         }}
       />
 
@@ -263,13 +265,36 @@ export function StudentsPage() {
   );
 }
 
-function CreateStudentModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (input: { name: string; parentContact?: string; dateJoined: string }) => void }) {
+function CreateStudentModal({
+  open,
+  onClose,
+  onCreate,
+  batches,
+  defaultBatchId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  batches: Array<{ id: string; name: string }>;
+  defaultBatchId: string | null;
+  onCreate: (input: { name: string; parentContact?: string; dateJoined: string }, batchId: string | null) => void;
+}) {
   const [name, setName] = useState('');
   const [parent, setParent] = useState('');
+  const [batchId, setBatchId] = useState<string | null>(defaultBatchId);
+
+  // Reset whenever the modal re-opens with a (possibly new) default
+  useMemo(() => {
+    if (open) setBatchId(defaultBatchId);
+  }, [open, defaultBatchId]);
+
   if (!open) return null;
 
   return (
-    <Modal open onClose={() => { setName(''); setParent(''); onClose(); }} title="New student">
+    <Modal
+      open
+      onClose={() => { setName(''); setParent(''); setBatchId(defaultBatchId); onClose(); }}
+      title="New student"
+    >
       <div className="space-y-3">
         <div>
           <Label>Name</Label>
@@ -279,18 +304,55 @@ function CreateStudentModal({ open, onClose, onCreate }: { open: boolean; onClos
           <Label>Parent contact (optional)</Label>
           <TextInput value={parent} onChange={(e) => setParent(e.target.value)} placeholder="phone or email" />
         </div>
+        <div>
+          <Label>Add to a batch</Label>
+          <p className="text-xs text-fg-muted mb-2">Pick one now — you can add more later.</p>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-hide">
+            <button
+              type="button"
+              onClick={() => setBatchId(null)}
+              className={`w-full text-left rounded-xl border px-3 py-2.5 text-sm transition-colors ${
+                batchId === null ? 'bg-neon-green/10 border-neon-green/50 text-fg-primary' : 'bg-bg-card border-border text-fg-secondary'
+              }`}
+            >
+              Skip for now
+            </button>
+            {batches.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => setBatchId(b.id)}
+                className={`w-full text-left rounded-xl border px-3 py-2.5 text-sm transition-colors ${
+                  batchId === b.id ? 'bg-neon-green/10 border-neon-green/50 text-fg-primary' : 'bg-bg-card border-border text-fg-secondary'
+                }`}
+              >
+                {b.name}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex gap-2 pt-2">
-          <Button variant="ghost" onClick={() => { setName(''); setParent(''); onClose(); }} className="flex-1">Cancel</Button>
+          <Button
+            variant="ghost"
+            onClick={() => { setName(''); setParent(''); setBatchId(defaultBatchId); onClose(); }}
+            className="flex-1"
+          >
+            Cancel
+          </Button>
           <Button
             disabled={!name.trim()}
             onClick={() => {
-              onCreate({
-                name: name.trim(),
-                parentContact: parent.trim() || undefined,
-                dateJoined: todayISO(),
-              });
+              onCreate(
+                {
+                  name: name.trim(),
+                  parentContact: parent.trim() || undefined,
+                  dateJoined: todayISO(),
+                },
+                batchId,
+              );
               setName('');
               setParent('');
+              setBatchId(defaultBatchId);
             }}
             className="flex-1"
           >
@@ -302,14 +364,102 @@ function CreateStudentModal({ open, onClose, onCreate }: { open: boolean; onClos
   );
 }
 
+function ManageBatchesModal({
+  open,
+  onClose,
+  studentId,
+  studentName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  studentId: string;
+  studentName: string;
+}) {
+  const batches = useStore((s) => s.db.batches);
+  const memberships = useStore((s) => s.db.memberships);
+  const addMembership = useStore((s) => s.addMembership);
+  const removeMembership = useStore((s) => s.removeMembership);
+
+  if (!open) return null;
+
+  const activeBatches = batches.filter((b) => !b.archivedAt);
+  const currentBatches = memberships.filter((m) => m.studentId === studentId && m.removedDate === null);
+  const currentBatchIds = new Set(currentBatches.map((m) => m.batchId));
+  const eligible = activeBatches.filter((b) => !currentBatchIds.has(b.id));
+
+  const handleAdd = (batchId: string) => {
+    addMembership(batchId, studentId);
+  };
+  const handleRemove = (batchId: string) => {
+    removeMembership(batchId, studentId);
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Manage batches for ${studentName}`}>
+      <div className="space-y-5">
+        <div>
+          <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted mb-2">In these batches</h4>
+          {currentBatches.length === 0 ? (
+            <div className="text-sm text-fg-muted py-2">Not in any active batch yet.</div>
+          ) : (
+            <div className="space-y-1.5">
+              {currentBatches.map((m) => {
+                const b = batches.find((bb) => bb.id === m.batchId);
+                if (!b) return null;
+                return (
+                  <div key={m.batchId} className="flex items-center justify-between bg-bg-card border border-border rounded-xl px-3 py-2.5">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{b.name}</div>
+                      <div className="text-[11px] text-fg-muted">
+                        Joined {m.joinedDate}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemove(m.batchId)}
+                      className="text-xs text-fg-muted hover:text-neon-pink uppercase tracking-wider font-bold"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted mb-2">Add to a batch</h4>
+          {eligible.length === 0 ? (
+            <div className="text-sm text-fg-muted py-2">Already in every active batch.</div>
+          ) : (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto scrollbar-hide">
+              {eligible.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => handleAdd(b.id)}
+                  className="w-full text-left bg-bg-card border border-border rounded-xl px-3 py-2.5 hover:bg-bg-card-hover"
+                >
+                  <div className="font-medium">{b.name}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Button variant="ghost" onClick={onClose} className="w-full">Done</Button>
+      </div>
+    </Modal>
+  );
+}
+
 function StudentDetail({ student, onSave, onArchive }: { student: { id: string; name: string; parentContact?: string; dateJoined: string }; onSave: (patch: { name: string; parentContact?: string }) => void; onArchive: () => void }) {
   const memberships = useStore((s) => s.db.memberships);
   const batches = useStore((s) => s.db.batches);
   const sessions = useStore((s) => s.db.sessions);
   const attendance = useStore((s) => s.db.attendance);
-
   const [name, setName] = useState(student.name);
   const [parent, setParent] = useState(student.parentContact ?? '');
+  const [showManageBatches, setShowManageBatches] = useState(false);
 
   const studentBatches = memberships.filter((m) => m.studentId === student.id && m.removedDate === null);
 
@@ -352,7 +502,10 @@ function StudentDetail({ student, onSave, onArchive }: { student: { id: string; 
       </div>
 
       <div>
-        <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted mb-2">Batches</h4>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted">Batches</h4>
+          <button onClick={() => setShowManageBatches(true)} className="text-xs text-neon-green uppercase tracking-wider font-bold">Manage</button>
+        </div>
         {studentBatches.length === 0 ? (
           <div className="text-sm text-fg-muted">Not in any batch yet.</div>
         ) : (
@@ -408,6 +561,13 @@ function StudentDetail({ student, onSave, onArchive }: { student: { id: string; 
           Save
         </Button>
       </div>
+
+      <ManageBatchesModal
+        open={showManageBatches}
+        onClose={() => setShowManageBatches(false)}
+        studentId={student.id}
+        studentName={student.name}
+      />
     </div>
   );
 }
