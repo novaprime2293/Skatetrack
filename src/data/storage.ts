@@ -13,7 +13,10 @@ import { SCHEMA_VERSION } from './types';
 const DB_NAME = 'skatetrack';
 const DB_VERSION = 1;
 const SNAPSHOT_STORE = 'snapshots';
-const SNAPSHOT_KEY = 'current';
+// Convention: skatetrack-<feature>-v1 (full feature name, kebab-case, version suffix).
+// See MEMORY.md Lesson L-01 — never use placeholders. 'current' was a generic placeholder
+// that would collide with any future archived/backup snapshots in the same store.
+const SNAPSHOT_KEY = 'skatetrack-snapshot-v1';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
