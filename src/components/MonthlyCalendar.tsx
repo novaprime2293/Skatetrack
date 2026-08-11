@@ -377,8 +377,20 @@ export function MonthlyCalendar() {
                     );
                   }
 
-                  // Nothing scheduled, not a class day — dim empty cell.
-                  return <div key={d} className="h-6 mx-0.5 rounded bg-bg-card opacity-40" />;
+                  // Nothing scheduled, not a class day — dim but TAP-PICKABLE so the user can
+                  // record an ad-hoc class on a non-batch day. Matches student-detail behavior
+                  // where every empty cell opens the adhoc picker (handles reschedules AND
+                  // adds of extra classes). Visually dim to signal "this isn't a normal class
+                  // day for any of this student's batches", but the cell is interactive.
+                  return (
+                    <button
+                      key={d}
+                      onClick={() => handleCellTap(row.id, row.name, dateStr, cell)}
+                      className="relative h-6 mx-0.5 rounded bg-bg-card opacity-40 hover:opacity-70 active:scale-95"
+                      title={`${row.name} · ${formatISODate(dateStr)} · tap to add ad-hoc class`}
+                      aria-label={`Add ad-hoc class for ${row.name} on ${dateStr}`}
+                    />
+                  );
                 })}
               </div>
             ))}
