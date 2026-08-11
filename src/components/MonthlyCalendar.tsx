@@ -13,8 +13,11 @@ import { todayISO } from '../data/storage';
 type CellStatus = 'present' | 'absent' | 'unmarked';
 
 interface DayCell {
-  /** Sessions for this student on this date across all their active batches (real, not virtual). Cancelled excluded. */
-  sessions: { sessionId: string; batchId: string; batchName: string; type: 'recurring' | 'one-off' }[];
+  /** Sessions for this student on this date across all their active batches (real, not virtual).
+   * Also includes "makeup" sessions: a session for a batch the student ISN'T enrolled in
+   * but the student has an attendance record for. Driven by Joseph's "students might mix
+   * and match" intent (every attendance counts toward the monthly total). Cancelled excluded. */
+  sessions: { sessionId: string; batchId: string; batchName: string; type: 'recurring' | 'one-off'; isMakeup: boolean }[];
   /** Status per session (or null if unmarked). Length matches sessions. */
   statuses: (CellStatus | null)[];
   /** True if any session lands on a normal `daysOfWeek` day for its batch. Drives the dotted cyan border. */
@@ -131,6 +134,7 @@ export function MonthlyCalendar() {
         // the dotted cyan border, matching the student-detail calendar.
         const isNormalClassDay = row.batches.some((b) => b.daysOfWeek.includes(dayOfWeek));
         let isReschedule = false;
+        const enrolledBatchIds = new Set(row.batches.map((b) => b.id));
         for (const batch of row.batches) {
           const sess = monthSessionsByBatchDate.get(`${batch.id}|${dateStr}`);
           if (!sess) continue;
@@ -139,11 +143,36 @@ export function MonthlyCalendar() {
             batchId: batch.id,
             batchName: batch.name,
             type: sess.type,
+            isMakeup: false,
           });
           const att = attendance.find((a) => a.sessionId === sess.id && a.studentId === row.id);
           statuses.push(att?.status ?? null);
           // Reschedule = session is one-off OR sits on a non-daysOfWeek day.
           if (sess.type === 'one-off' || !batch.daysOfWeek.includes(dayOfWeek)) isReschedule = true;
+        }
+        // Also include sessions for batches the student ISN'T enrolled in, but where they
+        // have an attendance record (make-up attendance). Joseph's flexibility rule: every
+        // attendance should be visible on the calendar so it matches the Charts counter.
+        for (const att of attendance) {
+          if (att.studentId !== row.id) continue;
+          // Skip if already collected from the enrolled-batches loop above.
+          if (sessionsForDay.some((s) => s.sessionId === att.sessionId)) continue;
+          // Find the session directly in the sessions list (we need the date and batchId).
+          const attSess = sessions.find((s) => s.id === att.sessionId);
+          if (!attSess || attSess.date !== dateStr) continue;
+          if (attSess.status === 'cancelled') continue;
+          // Only cross-batch — enrolled batches already covered above.
+          if (enrolledBatchIds.has(attSess.batchId)) continue;
+          const attBatch = batches.find((b) => b.id === attSess.batchId);
+          if (!attBatch) continue;
+          sessionsForDay.push({
+            sessionId: attSess.id,
+            batchId: attBatch.id,
+            batchName: attBatch.name,
+            type: attSess.type,
+            isMakeup: true,
+          });
+          statuses.push(att.status);
         }
         dayMap.set(d, {
           sessions: sessionsForDay,
@@ -335,7 +364,7 @@ export function MonthlyCalendar() {
                         key={d}
                         onClick={() => handleCellTap(row.id, row.name, dateStr, cell)}
                         className={`relative h-6 mx-0.5 rounded ${bg} ${borderClasses} flex items-center justify-center gap-0.5 text-[10px] font-bold active:scale-95`}
-                        title={`${row.name} · ${formatISODate(dateStr)} · ${cell.sessions.length} sessions${cell.isReschedule ? ' · rescheduled' : ''}`}
+                        title={`${row.name} · ${formatISODate(dateStr)} · ${cell.sessions.length} sessions${cell.sessions.some((s) => s.isMakeup) ? ' · includes makeup' : ''}${cell.isReschedule ? ' · rescheduled' : ''}`}
                       >
                         {marks}
                       </button>
@@ -357,7 +386,7 @@ export function MonthlyCalendar() {
                         key={d}
                         onClick={() => handleCellTap(row.id, row.name, dateStr, cell)}
                         className={`relative h-6 mx-0.5 rounded ${bg} ${borderClasses} flex items-center justify-center text-[10px] font-bold active:scale-95`}
-                        title={`${row.name} · ${formatISODate(dateStr)} · ${cell.sessions[0].batchName}${st ? ` · ${st}` : ''}${cell.isReschedule ? ' · rescheduled' : ''}`}
+                        title={`${row.name} · ${formatISODate(dateStr)} · ${cell.sessions[0].batchName}${st ? ` · ${st}` : ''}${cell.sessions[0].isMakeup ? ' · makeup' : ''}${cell.isReschedule ? ' · rescheduled' : ''}`}
                       >
                         {mark}
                       </button>
