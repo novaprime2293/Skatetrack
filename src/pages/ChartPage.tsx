@@ -72,30 +72,19 @@ export function ChartPage() {
   }, [sessionsInMonth]);
 
   // Section 1 — Monthly target bar chart.
-  // Done = count of present AttendanceRecords for this student whose session is in the visible month
-  // AND the student was a member of that batch on the session's date. This is the Bhoomika fix:
-  // when a student is moved between batches, attendance from their old batch (after they left)
-  // no longer counts toward their monthly "done" total.
-  // Pre-build a lookup of { [studentId|batchId]: { joinedDate, removedDate? } } for fast checks.
-  const membershipLookup = useMemo(() => {
-    const map = new Map<string, { joinedDate: string; removedDate: string | null }>();
-    for (const m of memberships) {
-      map.set(`${m.studentId}|${m.batchId}`, { joinedDate: m.joinedDate, removedDate: m.removedDate });
-    }
-    return map;
-  }, [memberships]);
-
+  // Joseph's intent (2026-08-11): every attendance mark = 1 class attended. Count goes up
+  // toward the 8-class monthly minimum. Make-up attendance in any batch's session counts too
+  // ("students might mix and match and come for any 2 days if they have some other work
+  // during their batch class"). So NO membership-scope filter — just count every present
+  // attendance record whose session is in the visible month.
+  // Note: the attendance date range is naturally bounded by `sessionsInMonth` (sessions
+  // outside the visible month are excluded), so historical attendance never bleeds in.
   const monthlyProgress = useMemo(() => {
     const doneByStudent = new Map<string, number>();
     for (const att of attendance) {
       if (att.status !== 'present') continue;
       const sess = sessionsInMonthById.get(att.sessionId);
       if (!sess) continue;
-      // Membership-scope check: only count if the student was a member of sess.batchId on sess.date.
-      const mem = membershipLookup.get(`${att.studentId}|${sess.batchId}`);
-      if (!mem) continue;
-      if (mem.joinedDate > sess.date) continue;
-      if (mem.removedDate !== null && mem.removedDate < sess.date) continue;
       doneByStudent.set(att.studentId, (doneByStudent.get(att.studentId) ?? 0) + 1);
     }
     const rows = activeStudents
@@ -106,7 +95,18 @@ export function ChartPage() {
       // Students with no done classes go to the bottom of the chart (they're far from the minimum).
       .sort((a, b) => a.done - b.done || a.name.localeCompare(b.name));
     return rows;
-  }, [attendance, sessionsInMonthById, activeStudents, membershipLookup]);
+  }, [attendance, sessionsInMonthById, activeStudents]);
+
+  // Membership-scope lookup — used by Section 2 (perStudent) to restrict to attendance
+  // for batches the student was actually enrolled in on the session date. Section 1 above
+  // intentionally does NOT use this (every attendance counts toward the monthly minimum).
+  const membershipLookup = useMemo(() => {
+    const map = new Map<string, { joinedDate: string; removedDate: string | null }>();
+    for (const m of memberships) {
+      map.set(`${m.studentId}|${m.batchId}`, { joinedDate: m.joinedDate, removedDate: m.removedDate });
+    }
+    return map;
+  }, [memberships]);
 
   // Section 2 — Students ranked by attendance (present / total) over visible month.
   // Applies the optional batch filter. Same membership-scope fix as Section 1: only count
