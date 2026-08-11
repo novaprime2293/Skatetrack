@@ -31,16 +31,16 @@ export function HomePage() {
     return count;
   }, [activeBatches, sessions, today]);
 
-  // Classes done this month, per batch. Rule (Joseph, 2026-08-11, revised):
-  //   1. Count = number of distinct dates this month where attendance was actually marked
-  //      for the batch. Schedule is ignored; attendance records are the source of truth.
-  //   2. A day is "done" for a batch if at least one attendance row exists for that batch
-  //      on that date. Recurring + one-off sessions both qualify.
+  // Classes done this month, per batch. Rule (Joseph, 2026-08-11, final):
+  //   1. Count = number of distinct dates this month where at least one student was marked
+  //      PRESENT for the batch. Schedule is ignored; attendance records are the source of truth.
+  //   2. A day is "done" for a batch ONLY IF at least one attendance row with status='present'
+  //      exists for that batch on that date. This filters out "tap-through" accidents where
+  //      MissedAttendanceModal's auto-backfill + a Confirm-tap commits everyone-absent without
+  //      the teacher actually marking anyone — those don't count as real classes.
   //   3. Per-batch counter. A date with attendance for batch A only counts for A, not for B.
-  //      This correctly handles cases where one batch ran on a shared scheduled day and the
-  //      other did not (e.g. rain day, cancellation).
-  //   4. Cancelled sessions are excluded (stale attendance on a cancelled session shouldn't
-  //      count).
+  //   4. Cancelled sessions are excluded.
+  //   5. Recurring + one-off sessions both qualify.
   const classesDoneByBatch = useMemo(() => {
     const ym = today.slice(0, 7); // "YYYY-MM"
     const monthStart = `${ym}-01`;
@@ -53,9 +53,10 @@ export function HomePage() {
       sessionMeta.set(s.id, { batchId: s.batchId, date: s.date, status: s.status });
     }
 
-    // batchId -> Set of dates with attendance this month
+    // batchId -> Set of dates with at least one 'present' attendance row this month
     const datesByBatch = new Map<string, Set<string>>();
     for (const att of attendance) {
+      if (att.status !== 'present') continue; // only 'present' counts as a real class day
       const meta = sessionMeta.get(att.sessionId);
       if (!meta) continue;
       if (meta.date < monthStart || meta.date > monthEnd) continue;

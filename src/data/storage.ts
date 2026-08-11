@@ -81,6 +81,13 @@ export async function loadDB(): Promise<DB | null> {
     // daysOfWeek (e.g., a recurring Tuesday session stored as "2026-08-10" when the batch runs Tue)
     // gets shifted by ±1 day. Caused by a bug where toISOString().slice(0,10) returned UTC's date,
     // not local. Runs once per batch+date — safe to re-run idempotently.
+    //
+    // SAFETY RAILS (set 2026-08-11 after Joseph reported an extra "class" on Aug 1 caused by
+    // a stale session being dragged across a month boundary):
+    //   - Never shift a session that has attendance records (Joseph marked that date on purpose).
+    //   - Never shift if the shift would cross a month or year boundary (don't drag old data
+    //     into the current month, or vice versa).
+    //   - Never shift sessions older than 30 days (stale data shouldn't be touched).
     if (Array.isArray(stored.sessions) && Array.isArray(stored.batches)) {
       let migrated = false;
       const dayOfWeekFromIso = (iso: string): number => {
@@ -93,16 +100,29 @@ export async function loadDB(): Promise<DB | null> {
         dt.setDate(dt.getDate() + delta);
         return formatLocalISODate(dt);
       };
+      const attendanceBySession = new Map<string, number>();
+      for (const att of stored.attendance ?? []) {
+        attendanceBySession.set(att.sessionId, (attendanceBySession.get(att.sessionId) ?? 0) + 1);
+      }
       for (const sess of stored.sessions) {
         if (sess.type !== 'recurring') continue;
         if (sess.status === 'cancelled') continue;
+        if ((attendanceBySession.get(sess.id) ?? 0) > 0) continue; // never shift attended sessions
+        if (sess.createdAt) {
+          const ageMs = Date.now() - Date.parse(sess.createdAt);
+          if (!Number.isNaN(ageMs) && ageMs > 30 * 24 * 60 * 60 * 1000) continue; // skip stale
+        }
         const batch = stored.batches.find((b) => b.id === sess.batchId);
         if (!batch || batch.daysOfWeek.length === 0) continue;
         const dow = dayOfWeekFromIso(sess.date);
         if (batch.daysOfWeek.includes(dow)) continue; // date already correct
-        // Try shifting ±1 day. Pick whichever matches the batch's daysOfWeek.
+        // Try shifting ±1 day. Pick whichever matches the batch's daysOfWeek AND stays in the
+        // same month/year. (Don't drag dates across month boundaries — that creates bogus
+        // "class on Aug 1" entries when the actual class was on Jul 31.)
+        const originalMonth = sess.date.slice(0, 7);
         for (const delta of [1, -1]) {
           const shifted = shiftIso(sess.date, delta);
+          if (shifted.slice(0, 7) !== originalMonth) continue; // cross-month shift forbidden
           if (batch.daysOfWeek.includes(dayOfWeekFromIso(shifted))) {
             sess.date = shifted;
             migrated = true;
@@ -112,6 +132,34 @@ export async function loadDB(): Promise<DB | null> {
       }
       if (migrated) {
         console.info('Skatetrack: migrated session dates for IST/timezone fix');
+      }
+    }
+
+    // Cleanup migration (added 2026-08-11 after Joseph's Aug 1 incident): for any recurring
+    // session whose date is in a different month from its createdAt timestamp, the session
+    // was almost certainly dragged across a month boundary by an earlier TZ migration that
+    // didn't have the cross-month safety rail. Revert the date to createdAt's local date —
+    // that's when Joseph actually marked attendance and the true "source of truth" for
+    // when the class happened. Idempotent and safe: if a session was created today with
+    // today's date, both are in the same month and this is a no-op.
+    if (Array.isArray(stored.sessions)) {
+      let reverted = 0;
+      for (const sess of stored.sessions) {
+        if (sess.type !== 'recurring') continue;
+        if (sess.status === 'cancelled') continue;
+        if (!sess.createdAt) continue;
+        const dateMonth = sess.date.slice(0, 7);
+        const createdDate = new Date(sess.createdAt);
+        if (Number.isNaN(createdDate.getTime())) continue;
+        const createdDateStr = formatLocalISODate(createdDate);
+        const createdMonth = createdDateStr.slice(0, 7);
+        if (dateMonth === createdMonth) continue;
+        // Date is in a different month from createdAt. Revert.
+        sess.date = createdDateStr;
+        reverted++;
+      }
+      if (reverted > 0) {
+        console.info(`Skatetrack: reverted ${reverted} session(s) dragged across month boundaries by earlier TZ migration`);
       }
     }
     // Deduplicate sessions — for each (batchId, date, type), keep one canonical session
