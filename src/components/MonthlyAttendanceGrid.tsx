@@ -169,24 +169,22 @@ export function MonthlyAttendanceGrid() {
                       return <div key={d} className="h-6 mx-0.5 rounded bg-bg-card opacity-50" />;
                     }
                     // Reschedule detection: was attendance recorded on a day that is NOT a normal
-                    // class day for any of the student's batches? If yes, mark with orange dot.
+                    // class day for any of the student's batches? If yes, mark with orange dotted border.
                     const dayOfWeek = parseISODate(dateStr).getDay();
                     const studentBatches = batches.filter((b) => row.batchIds.has(b.id) && !b.archivedAt);
                     const isNormalClassDay = studentBatches.some((b) => b.daysOfWeek.includes(dayOfWeek));
                     const isReschedule = !isNormalClassDay;
-                    const dayMarkerColor = isReschedule ? 'bg-neon-orange' : 'bg-neon-cyan/70';
+                    // Dotted boundary signals "class day". Cyan = normal schedule, orange = reschedule.
+                    const borderClasses = isReschedule
+                      ? 'border border-dotted border-neon-orange/80'
+                      : 'border border-dotted border-neon-cyan/70';
                     return (
                       <button
                         key={d}
                         onClick={() => navigate(`/students/${row.id}?date=${dateStr}`)}
-                        className={`relative h-6 mx-0.5 rounded ${cellClasses(c)} flex items-center justify-center text-[10px] font-bold active:scale-95`}
+                        className={`relative h-6 mx-0.5 rounded ${cellClasses(c)} ${borderClasses} flex items-center justify-center text-[10px] font-bold active:scale-95`}
                         title={`${row.name} · ${parseISODate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${c}${isReschedule ? ' · rescheduled' : ''}`}
                       >
-                        {/* Top marker: cyan = normal class day, orange = reschedule. */}
-                        <span
-                          aria-hidden="true"
-                          className={`absolute top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${dayMarkerColor}`}
-                        />
                         {cellLabel(c)}
                       </button>
                     );
@@ -202,8 +200,8 @@ export function MonthlyAttendanceGrid() {
         <div className="flex items-center gap-1"><span className="font-bold text-neon-green">G</span>All present</div>
         <div className="flex items-center gap-1"><span className="font-bold text-neon-pink">R</span>All absent</div>
         <div className="flex items-center gap-1"><span className="font-bold">M</span>Mixed</div>
-        <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-cyan/70" />Class day</div>
-        <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-orange" />Rescheduled</div>
+        <div className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm border border-dotted border-neon-cyan/70" />Class day</div>
+        <div className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm border border-dotted border-neon-orange/80" />Rescheduled</div>
       </div>
     </div>
   );
