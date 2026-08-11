@@ -3,6 +3,7 @@ import { useStore } from '../data/store';
 import { PageHeader, Card, Button, Modal, TextInput, Label, Pill, EmptyState } from '../components/ui';
 import { DAY_NAMES } from '../data/types';
 import { useNavigate } from 'react-router-dom';
+import { formatLocalISODate } from '../data/storage';
 
 export function BatchesPage() {
   const navigate = useNavigate();
@@ -460,7 +461,7 @@ function BatchDetail({
 }
 
 function OneOffModal({ batchStart, batchEnd, onClose, onCreate }: { batchStart: string; batchEnd: string; onClose: () => void; onCreate: (date: string, start: string, end: string) => void }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(formatLocalISODate(new Date()));
   const [start, setStart] = useState(batchStart);
   const [end, setEnd] = useState(batchEnd);
 

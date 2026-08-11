@@ -15,7 +15,7 @@ import type {
   AttendanceRecord,
   PaymentRecord,
 } from './types';
-import { newId, nowISO, saveDB, loadDB, clearDB, saveBackupSnapshot } from './storage';
+import { newId, nowISO, saveDB, loadDB, clearDB, saveBackupSnapshot, formatLocalISODate } from './storage';
 
 function emptyDB(): DB {
   return {
@@ -227,7 +227,7 @@ export const useStore = create<StoreState>((set, get) => ({
       id: newId(),
       batchId,
       studentId,
-      joinedDate: joinedDate ?? new Date().toISOString().slice(0, 10),
+      joinedDate: joinedDate ?? formatLocalISODate(new Date()),
       removedDate: null,
       createdAt: nowISO(),
     };
@@ -244,7 +244,7 @@ export const useStore = create<StoreState>((set, get) => ({
         ...s.db,
         memberships: s.db.memberships.map((m) =>
           m.batchId === batchId && m.studentId === studentId && m.removedDate === null
-            ? { ...m, removedDate: removedDate ?? new Date().toISOString().slice(0, 10) }
+            ? { ...m, removedDate: removedDate ?? formatLocalISODate(new Date()) }
             : m
         ),
       };

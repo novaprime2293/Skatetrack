@@ -66,6 +66,43 @@ export async function loadDB(): Promise<DB | null> {
     if (!Array.isArray(stored.payments)) {
       stored.payments = [];
     }
+    // One-time timezone-fix migration: any session whose date string doesn't match the batch's
+    // daysOfWeek (e.g., a recurring Tuesday session stored as "2026-08-10" when the batch runs Tue)
+    // gets shifted by ±1 day. Caused by a bug where toISOString().slice(0,10) returned UTC's date,
+    // not local. Runs once per batch+date — safe to re-run idempotently.
+    if (Array.isArray(stored.sessions) && Array.isArray(stored.batches)) {
+      let migrated = false;
+      const dayOfWeekFromIso = (iso: string): number => {
+        const [y, m, d] = iso.split('-').map(Number);
+        return new Date(y, m - 1, d).getDay();
+      };
+      const shiftIso = (iso: string, delta: number): string => {
+        const [y, m, d] = iso.split('-').map(Number);
+        const dt = new Date(y, m - 1, d);
+        dt.setDate(dt.getDate() + delta);
+        return formatLocalISODate(dt);
+      };
+      for (const sess of stored.sessions) {
+        if (sess.type !== 'recurring') continue;
+        if (sess.status === 'cancelled') continue;
+        const batch = stored.batches.find((b) => b.id === sess.batchId);
+        if (!batch || batch.daysOfWeek.length === 0) continue;
+        const dow = dayOfWeekFromIso(sess.date);
+        if (batch.daysOfWeek.includes(dow)) continue; // date already correct
+        // Try shifting ±1 day. Pick whichever matches the batch's daysOfWeek.
+        for (const delta of [1, -1]) {
+          const shifted = shiftIso(sess.date, delta);
+          if (batch.daysOfWeek.includes(dayOfWeekFromIso(shifted))) {
+            sess.date = shifted;
+            migrated = true;
+            break;
+          }
+        }
+      }
+      if (migrated) {
+        console.info('Skatetrack: migrated session dates for IST/timezone fix');
+      }
+    }
     return stored;
   } catch (e) {
     console.error('Skatetrack: failed to load DB', e);
@@ -192,7 +229,16 @@ export function nowISO(): string {
 }
 
 export function todayISO(): string {
-  const d = new Date();
+  return formatLocalISODate(new Date());
+}
+
+/**
+ * Format any Date as YYYY-MM-DD using its LOCAL calendar components. Avoid `d.toISOString().slice(0, 10)`
+ * for date-keyed app state — that returns the UTC date, which is the previous day for users east of
+ * UTC (e.g., IST +5:30 means local midnight is UTC 18:30 the previous day). Using local components
+ * keeps the displayed calendar aligned with what the user actually sees on the wall clock.
+ */
+export function formatLocalISODate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../data/store';
 import { Button, TextInput, Label, Card } from '../components/ui';
 import { DAY_NAMES } from '../data/types';
+import { formatLocalISODate } from '../data/storage';
 
 export function OnboardingPage({ onDone }: { onDone: () => void }) {
   const updateTeacherName = useStore((s) => s.updateTeacherName);
@@ -43,7 +44,7 @@ export function OnboardingPage({ onDone }: { onDone: () => void }) {
         const st = addStudent({
           name: s.name,
           parentContact: s.parentContact,
-          dateJoined: new Date().toISOString().slice(0, 10),
+          dateJoined: formatLocalISODate(new Date()),
         });
         addMembership(b.id, st.id);
       }

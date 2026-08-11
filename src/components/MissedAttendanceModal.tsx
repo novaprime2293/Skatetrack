@@ -5,6 +5,7 @@ import { sessionEnded } from '../data/sessions';
 import { Modal, Button } from './ui';
 import { PRELISTED_CANCEL_REASONS } from '../data/types';
 import { formatISODate } from '../data/sessions';
+import { formatLocalISODate } from '../data/storage';
 
 export function MissedAttendanceModal() {
   const navigate = useNavigate();
@@ -38,7 +39,7 @@ export function MissedAttendanceModal() {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = formatLocalISODate(new Date());
     for (const batch of batches) {
       if (batch.archivedAt) continue;
       if (batch.daysOfWeek.length === 0) continue;
@@ -46,8 +47,8 @@ export function MissedAttendanceModal() {
       const batchCreatedDate = batch.createdAt.slice(0, 10);
       const cur = new Date();
       cur.setDate(cur.getDate() - 14);
-      while (cur.toISOString().slice(0, 10) < today) {
-        const iso = cur.toISOString().slice(0, 10);
+      while (formatLocalISODate(cur) < today) {
+        const iso = formatLocalISODate(cur);
         // Don't auto-create sessions for dates before the batch was created
         if (iso < batchCreatedDate) {
           cur.setDate(cur.getDate() + 1);

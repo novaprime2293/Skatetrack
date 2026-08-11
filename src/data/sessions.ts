@@ -1,7 +1,7 @@
 // Date/session helpers — sessions are date strings YYYY-MM-DD.
 
 import type { Batch, Session } from './types';
-import { todayISO } from './storage';
+import { todayISO, formatLocalISODate } from './storage';
 
 export function parseISODate(iso: string): Date {
   const [y, m, d] = iso.split('-').map(Number);
@@ -45,7 +45,10 @@ export function batchSessionsInRange(batch: Batch, from: string, to: string): st
   const end = parseISODate(to);
   const cur = new Date(start);
   while (cur <= end) {
-    const iso = cur.toISOString().slice(0, 10);
+    // Use local-date components, not UTC, so IST (and other east-of-UTC users) see the class on the
+    // correct wall-clock day. (Previously used cur.toISOString().slice(0,10) which returned UTC's
+    // date — one day behind for timezones east of UTC.)
+    const iso = formatLocalISODate(cur);
     if (batch.daysOfWeek.includes(cur.getDay())) {
       out.push(iso);
     }
