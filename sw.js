@@ -5,7 +5,7 @@
 // for users (e.g., a fix that the stale SW would otherwise keep serving). Old caches are
 // deleted by the activate handler below.
 
-const CACHE = 'skatetrack-v7';
+const CACHE = 'skatetrack-v8';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
