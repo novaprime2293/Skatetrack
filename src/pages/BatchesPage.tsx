@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../data/store';
 import { PageHeader, Card, Button, Modal, TextInput, Label, Pill, EmptyState } from '../components/ui';
 import { DAY_NAMES } from '../data/types';
@@ -309,21 +309,32 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
 
 function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; onClose: () => void; onSave: (patch: { name: string; daysOfWeek: number[]; startTime: string; endTime: string; dayTimes?: Record<number, { startTime: string; endTime: string }>; location?: string; costPerClass: number }) => void }) {
   const batch = useStore((s) => s.db.batches.find((b) => b.id === batchId));
-  const [name, setName] = useState(batch?.name ?? '');
-  const [days, setDays] = useState<number[]>(batch?.daysOfWeek ?? []);
+  // useState initializers only run once. The parent component renders this modal with
+  // `batchId` toggling from null → id, so we need to sync state when batch changes.
   // Hydrate per-day times from batch.dayTimes, falling back to the batch's start/end.
-  // Runs once on mount; later edits stay in component state.
-  const [dayTimes, setDayTimes] = useState<Record<number, { startTime: string; endTime: string }>>(() => {
-    if (!batch) return {};
-    const out: Record<number, { startTime: string; endTime: string }> = {};
+  const [name, setName] = useState('');
+  const [days, setDays] = useState<number[]>([]);
+  const [dayTimes, setDayTimes] = useState<Record<number, { startTime: string; endTime: string }>>({});
+  const [location, setLocation] = useState('');
+  const [cost, setCost] = useState<string>('');
+
+  // Re-sync component state whenever the underlying batch changes (open a different batch, or
+  // open the same batch after edits were applied). This is the key fix for the
+  // "edit modal shows blank fields" bug.
+  useEffect(() => {
+    if (!batch) return;
+    setName(batch.name);
+    setDays(batch.daysOfWeek);
+    setLocation(batch.location ?? '');
+    setCost(batch.costPerClass ? String(batch.costPerClass) : '');
+    const dt: Record<number, { startTime: string; endTime: string }> = {};
     for (const d of batch.daysOfWeek) {
-      const dt = batch.dayTimes?.[d];
-      out[d] = { startTime: dt?.startTime ?? batch.startTime, endTime: dt?.endTime ?? batch.endTime };
+      const entry = batch.dayTimes?.[d];
+      dt[d] = { startTime: entry?.startTime ?? batch.startTime, endTime: entry?.endTime ?? batch.endTime };
     }
-    return out;
-  });
-  const [location, setLocation] = useState(batch?.location ?? '');
-  const [cost, setCost] = useState<string>(batch?.costPerClass ? String(batch.costPerClass) : '');
+    setDayTimes(dt);
+  }, [batch?.id, batch?.name, batch?.daysOfWeek.join(','), batch?.startTime, batch?.endTime, batch?.dayTimes ? JSON.stringify(batch.dayTimes) : '', batch?.location, batch?.costPerClass]);
+
   const costNum = parseFloat(cost);
 
   if (!batchId || !batch) return null;
