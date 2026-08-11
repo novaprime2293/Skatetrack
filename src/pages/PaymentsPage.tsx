@@ -377,11 +377,56 @@ function PaymentRow({
           </div>
         </div>
         <div className="text-right whitespace-nowrap">
-          <div className="text-base font-extrabold text-fg-primary">{formatINR(owed)}</div>
-          <div className={`text-[11px] font-bold ${statusColor}`}>
-            {isFullyPaid ? 'Paid in full' : isPartiallyPaid ? `Paid ${formatINR(paid)}` : isUnpaid ? 'Unpaid' : '—'}
-          </div>
-          {isPartiallyPaid && <div className="text-[10px] text-fg-muted">{formatINR(remaining)} remaining</div>}
+          {/* Headline number: show PAID when a payment exists (so Joseph's ₹2000 entry is
+              visibly the headline), otherwise show OWED. Colored by status so the row is
+              scannable. The small context line under the headline makes the number
+              unambiguous: "Paid in full" / "of ₹X owed" / "Unpaid". For partial payments we
+              also show the remaining balance below. */}
+          {(() => {
+            const headlineClass = `text-base font-extrabold ${paid > 0 ? statusColor : 'text-fg-primary'}`;
+            if (isFullyPaid) {
+              return (
+                <>
+                  <div className={headlineClass}>{formatINR(paid)}</div>
+                  <div className={`text-[11px] font-bold ${statusColor}`}>Paid in full</div>
+                </>
+              );
+            }
+            if (isPartiallyPaid) {
+              return (
+                <>
+                  <div className={headlineClass}>{formatINR(paid)}</div>
+                  <div className={`text-[11px] font-bold ${statusColor}`}>
+                    of {formatINR(owed)} owed
+                  </div>
+                  <div className="text-[10px] text-fg-muted">
+                    {formatINR(remaining)} remaining
+                  </div>
+                </>
+              );
+            }
+            if (paid > 0) {
+              // Paid but nothing was owed this month (e.g., payment carries over from a prior
+              // month, or zero-attendance month). Headline shows the paid amount; below notes
+              // what's owed.
+              return (
+                <>
+                  <div className={headlineClass}>{formatINR(paid)}</div>
+                  <div className={`text-[11px] font-bold ${statusColor}`}>Paid</div>
+                  <div className="text-[10px] text-fg-muted">{formatINR(owed)} this month</div>
+                </>
+              );
+            }
+            // Unpaid (owed > 0) or no charges at all.
+            return (
+              <>
+                <div className={headlineClass}>{formatINR(owed)}</div>
+                <div className={`text-[11px] font-bold ${statusColor}`}>
+                  {isUnpaid ? 'Unpaid' : 'No charges'}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
