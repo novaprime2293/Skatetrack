@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { PageHeader, Card, SectionTitle } from '../components/ui';
-import { MonthlyAttendanceGrid } from '../components/MonthlyAttendanceGrid';
+import { MonthlyCalendar } from '../components/MonthlyCalendar';
 import { batchRunsOnDate, findOrCreateRecurringSessions, getBatchTimeForDay, parseISODate, sessionEnded } from '../data/sessions';
 import { todayISO } from '../data/storage';
 
@@ -217,7 +217,7 @@ export function HomePage() {
         </div>
       )}
 
-      <MonthlyAttendanceGrid />
+      <MonthlyCalendar />
 
       <div className="mt-6">
         <button
