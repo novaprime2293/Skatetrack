@@ -126,7 +126,10 @@ export function MonthlyCalendar() {
         const dayOfWeek = parseISODate(dateStr).getDay();
         const sessionsForDay: DayCell['sessions'] = [];
         const statuses: (CellStatus | null)[] = [];
-        let isNormalClassDay = false;
+        // Class day = ANY of the student's batches has this day in daysOfWeek.
+        // Independent of session presence — future class days (no session yet) still show
+        // the dotted cyan border, matching the student-detail calendar.
+        const isNormalClassDay = row.batches.some((b) => b.daysOfWeek.includes(dayOfWeek));
         let isReschedule = false;
         for (const batch of row.batches) {
           const sess = monthSessionsByBatchDate.get(`${batch.id}|${dateStr}`);
@@ -139,9 +142,8 @@ export function MonthlyCalendar() {
           });
           const att = attendance.find((a) => a.sessionId === sess.id && a.studentId === row.id);
           statuses.push(att?.status ?? null);
-          const isBatchDayByDow = batch.daysOfWeek.includes(dayOfWeek);
-          if (isBatchDayByDow) isNormalClassDay = true;
-          if (sess.type === 'one-off' || !isBatchDayByDow) isReschedule = true;
+          // Reschedule = session is one-off OR sits on a non-daysOfWeek day.
+          if (sess.type === 'one-off' || !batch.daysOfWeek.includes(dayOfWeek)) isReschedule = true;
         }
         dayMap.set(d, {
           sessions: sessionsForDay,
