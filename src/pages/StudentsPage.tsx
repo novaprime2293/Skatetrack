@@ -689,11 +689,18 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
                     const sess = row.sessionByDate.get(dateStr);
                     const isBatchDay = row.daysOfWeek.includes(parseISODate(dateStr).getDay());
                     const hasOneOff = !!sess && sess.type === 'one-off';
-                    // A cell is a "batch day" if the batch normally runs that weekday OR a one-off/special was added for that date.
-                    const isBatchDayCell = isBatchDay || hasOneOff;
+                    const isReschedule = hasOneOff || (!!sess && !isBatchDay);
                     const status = sess
                       ? attendance.find((a) => a.sessionId === sess.id && a.studentId === student.id)?.status ?? null
                       : null;
+                    // Dotted border marks the configured schedule: cyan for normal class days,
+                    // orange for reschedules. Applies to past, present, and future cells — even
+                    // empty ones with no session recorded — so the schedule is always visible.
+                    const cellBorder = isReschedule
+                      ? 'border border-dotted border-neon-orange/80'
+                      : isBatchDay
+                      ? 'border border-dotted border-neon-cyan/70'
+                      : '';
                     if (sess) {
                       // Scheduled cell — show status (present / absent / unmarked-but-scheduled).
                       const bg =
@@ -701,31 +708,26 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
                           ? 'bg-neon-green text-bg-base'
                           : status === 'absent'
                           ? 'bg-neon-pink text-bg-base'
-                          : 'bg-bg-card border border-border text-fg-secondary';
+                          : 'bg-bg-card text-fg-secondary';
+                      const borderClass = cellBorder || 'border border-border';
                       return (
                         <button
                           key={d}
                           onClick={() => handleScheduledCellTap(sess.id, dateStr, row.batchName)}
-                          className={`relative h-7 mx-0.5 rounded ${bg} flex items-center justify-center text-[10px] font-bold active:scale-95`}
+                          className={`relative h-7 mx-0.5 rounded ${bg} ${borderClass} flex items-center justify-center text-[10px] font-bold active:scale-95`}
                           aria-label={`${dateStr} ${row.batchName} ${status ?? 'unmarked'}`}
                         >
-                          {/* Batch-day marker — small cyan dot at the top, present on every scheduled class day regardless of attendance status. */}
-                          {isBatchDayCell && (
-                            <span
-                              aria-hidden="true"
-                              className="absolute top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neon-cyan/70"
-                            />
-                          )}
                           {status === 'present' ? '✓' : status === 'absent' ? '✗' : ''}
                         </button>
                       );
                     }
                     // Empty cell — no session. Tappable for adhoc attendance.
+                    // If it's a normal class day, show the dotted cyan border so the schedule is visible.
                     return (
                       <button
                         key={d}
                         onClick={() => handleEmptyCellTap(row.batchId, dateStr, row.batchName)}
-                        className="relative h-7 mx-0.5 rounded bg-bg-card/40 hover:bg-bg-card flex items-center justify-center text-[10px] text-fg-muted active:scale-95 border border-dashed border-border/50"
+                        className={`relative h-7 mx-0.5 rounded bg-bg-card/40 hover:bg-bg-card flex items-center justify-center text-[10px] text-fg-muted active:scale-95 ${cellBorder || 'border border-dashed border-border/50'}`}
                         aria-label={`Mark ${row.batchName} on ${dateStr}`}
                         title={`Tap to mark ${row.batchName} attendance on ${dateStr}`}
                       >
@@ -743,7 +745,8 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-neon-green" />Present</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-neon-pink" />Absent</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded border border-border bg-bg-card" />Unmarked</div>
-          <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-cyan/70" />Class day</div>
+          <div className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm border border-dotted border-neon-cyan/70" />Class day</div>
+          <div className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm border border-dotted border-neon-orange/80" />Rescheduled</div>
           <div className="flex items-center gap-1"><span className="opacity-60">+</span>Tap empty to add</div>
         </div>
       </div>
