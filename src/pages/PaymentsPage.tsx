@@ -377,56 +377,43 @@ function PaymentRow({
           </div>
         </div>
         <div className="text-right whitespace-nowrap">
-          {/* Headline number: show PAID when a payment exists (so Joseph's ₹2000 entry is
-              visibly the headline), otherwise show OWED. Colored by status so the row is
-              scannable. The small context line under the headline makes the number
-              unambiguous: "Paid in full" / "of ₹X owed" / "Unpaid". For partial payments we
-              also show the remaining balance below. */}
-          {(() => {
-            const headlineClass = `text-base font-extrabold ${paid > 0 ? statusColor : 'text-fg-primary'}`;
-            if (isFullyPaid) {
-              return (
-                <>
-                  <div className={headlineClass}>{formatINR(paid)}</div>
-                  <div className={`text-[11px] font-bold ${statusColor}`}>Paid in full</div>
-                </>
-              );
-            }
-            if (isPartiallyPaid) {
-              return (
-                <>
-                  <div className={headlineClass}>{formatINR(paid)}</div>
-                  <div className={`text-[11px] font-bold ${statusColor}`}>
-                    of {formatINR(owed)} owed
-                  </div>
-                  <div className="text-[10px] text-fg-muted">
-                    {formatINR(remaining)} remaining
-                  </div>
-                </>
-              );
-            }
-            if (paid > 0) {
-              // Paid but nothing was owed this month (e.g., payment carries over from a prior
-              // month, or zero-attendance month). Headline shows the paid amount; below notes
-              // what's owed.
-              return (
-                <>
-                  <div className={headlineClass}>{formatINR(paid)}</div>
-                  <div className={`text-[11px] font-bold ${statusColor}`}>Paid</div>
-                  <div className="text-[10px] text-fg-muted">{formatINR(owed)} this month</div>
-                </>
-              );
-            }
-            // Unpaid (owed > 0) or no charges at all.
-            return (
-              <>
-                <div className={headlineClass}>{formatINR(owed)}</div>
-                <div className={`text-[11px] font-bold ${statusColor}`}>
-                  {isUnpaid ? 'Unpaid' : 'No charges'}
-                </div>
-              </>
-            );
-          })()}
+          {/* Right-side status panel. The amount shown depends on whether a payment exists:
+              - Paid (any amount) → headline shows PAID with a "paid" label, color-coded green
+              - Unpaid with amount owed → headline shows OWED with "Unpaid" label, pink
+              - No charges → headline shows ₹0 with "No charges" label
+              Putting the noun (paid/owed) right next to the number makes it unambiguous even
+              when paid and owed happen to be the same number (₹2000 paid vs ₹2000 owed). */}
+          {paid > 0 && (
+            <div className={`text-base font-extrabold ${statusColor}`}>
+              {formatINR(paid)}
+              <span className={`text-[11px] font-bold ml-1.5 align-middle ${statusColor}`}>
+                {isFullyPaid ? '✓ Paid' : isPartiallyPaid ? 'partial' : 'paid'}
+              </span>
+            </div>
+          )}
+          {paid === 0 && owed > 0 && (
+            <div className="text-base font-extrabold text-fg-primary">
+              {formatINR(owed)}
+              <span className="text-[11px] font-bold text-neon-pink ml-1.5 align-middle">Unpaid</span>
+            </div>
+          )}
+          {paid === 0 && owed === 0 && (
+            <div className="text-base font-extrabold text-fg-muted">
+              {formatINR(0)}
+              <span className="text-[10px] font-bold text-fg-muted ml-1.5 align-middle">
+                No charges
+              </span>
+            </div>
+          )}
+          {/* Context line — remaining for partial, owed-this-month for edge case paid-only. */}
+          {isPartiallyPaid && (
+            <div className="text-[10px] text-fg-muted">
+              {formatINR(remaining)} remaining of {formatINR(owed)}
+            </div>
+          )}
+          {paid > 0 && owed === 0 && (
+            <div className="text-[10px] text-fg-muted">no charges this month</div>
+          )}
         </div>
       </div>
 
