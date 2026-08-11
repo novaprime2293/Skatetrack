@@ -207,13 +207,16 @@ export function HomePage() {
 
       {/* Adhoc classes · this month — counts reschedules + extra classes (any session on a day
           that's NOT in the batch's normal `daysOfWeek`) where at least one student was present.
-          Hidden when zero, so the Home screen stays clean until Joseph has actually used it. */}
-      {adhocCount > 0 && (
+          Always visible (when there are active batches) so Joseph can see the counter exist and
+          tick up as he uses it. Subtitle flips to a hint when count is zero. */}
+      {activeBatches.length > 0 && (
         <div className="mb-6">
           <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted mb-3">Adhoc classes · this month</h2>
           <div className="bg-bg-card border border-neon-orange/40 rounded-2xl p-3 text-center">
             <div className="text-2xl font-extrabold neon-text-orange">{adhocCount}</div>
-            <div className="text-[10px] text-fg-muted uppercase tracking-wider mt-1">Reschedules + extra classes</div>
+            <div className="text-[10px] text-fg-muted uppercase tracking-wider mt-1">
+              {adhocCount === 0 ? 'Tap a non-batch day on the calendar below to add' : 'Reschedules + extra classes'}
+            </div>
           </div>
         </div>
       )}
