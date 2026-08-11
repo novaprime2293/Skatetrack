@@ -101,7 +101,9 @@ export function StudentReport({
           datesAbsent.push({ date: sess.date, batchName: batch.name });
         }
       }
-      const total = attended * batch.costPerClass;
+      // costPerClass is the monthly flat fee per student (misnomer kept for storage compat).
+      // Total owed = the monthly fee regardless of how many classes attended.
+      const total = batch.costPerClass;
       grandTotal += total;
       perBatch.push({
         batchName: batch.name,
@@ -230,7 +232,7 @@ export function StudentReport({
                 <div>
                   <div style={{ fontWeight: 600 }}>{pb.batchName}</div>
                   <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
-                    {pb.classesAttended} class{pb.classesAttended === 1 ? '' : 'es'} × {formatINR(pb.costPerClass)}
+                    {pb.classesAttended} class{pb.classesAttended === 1 ? '' : 'es'} attended · {formatINR(pb.costPerClass)} / month
                   </div>
                 </div>
                 <div style={{ fontWeight: 700, color: pb.costPerClass > 0 ? '#00f0ff' : '#666' }}>

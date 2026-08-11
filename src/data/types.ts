@@ -24,7 +24,7 @@ export interface Batch {
   /** Per-day start/end times. Keyed by dayOfWeek (0=Sun..6=Sat). Optional — fall back to startTime/endTime when missing. */
   dayTimes?: Record<number, { startTime: string; endTime: string }>;
   location?: string;
-  /** Cost charged per class for this batch, in INR (or teacher's local currency). 0 = unpaid / not set. Defaulted to 0 on load for v1 data. */
+  /** Monthly flat fee charged per student for this batch, in INR (or teacher's local currency). Field name is a misnomer from v1 (when math was per-class); kept for storage compatibility. 0 = unpaid / not set. Defaulted to 0 on load for v1 data. */
   costPerClass: number;
   archivedAt?: string | null; // soft-delete
   createdAt: string;

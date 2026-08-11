@@ -136,7 +136,11 @@ export function PaymentsPage() {
             if (mem.removedDate !== null && mem.removedDate < sess.date) continue;
             attended++;
           }
-          const total = attended * batch.costPerClass;
+          // costPerClass is a misnomer — it's actually the MONTHLY flat fee per student.
+          // Joseph confirmed (2026-08-11): he charges a flat monthly amount, not per class.
+          // So total owed for this batch this month = batch.costPerClass (regardless of
+          // how many classes the student attended).
+          const total = batch.costPerClass;
           owed += total;
           perBatch.push({ batchName: batch.name, classesAttended: attended, costPerClass: batch.costPerClass, total });
         }
@@ -321,10 +325,11 @@ function PaymentRow({
   const isPartiallyPaid = paid > 0 && paid < owed;
   const isUnpaid = paid === 0;
 
-  const statusColor = isFullyPaid
+  // Joseph's preference (2026-08-11): any payment = green. Yellow for partial made the row
+  // look "incomplete / not done" when really money has been received. Green = "you've been
+  // paid something", pink = "nothing paid yet". Fully paid and partial are both green.
+  const statusColor = paid > 0
     ? 'text-neon-green'
-    : isPartiallyPaid
-    ? 'text-neon-yellow'
     : isUnpaid
     ? 'text-neon-pink'
     : 'text-fg-muted';
@@ -372,7 +377,7 @@ function PaymentRow({
             {perBatch.length === 0
               ? 'No batch charges this month'
               : perBatch
-                  .map((pb) => `${pb.batchName}: ${pb.classesAttended}× ${formatINR(pb.costPerClass)}`)
+                  .map((pb) => `${pb.batchName}: ${formatINR(pb.costPerClass)} / month`)
                   .join(' · ')}
           </div>
         </div>

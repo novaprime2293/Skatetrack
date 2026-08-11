@@ -75,7 +75,7 @@ export function BatchesPage() {
                     <div className="text-xs text-fg-muted mt-1">{memberCount} student{memberCount === 1 ? '' : 's'}</div>
                     <div className="text-xs mt-1">
                       {b.costPerClass > 0 ? (
-                        <span className="text-neon-cyan font-semibold">₹{b.costPerClass} / class</span>
+                        <span className="text-neon-cyan font-semibold">₹{b.costPerClass} / month</span>
                       ) : (
                         <span className="text-fg-muted">No charge</span>
                       )}
@@ -257,7 +257,7 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
           <TextInput value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Cubbon Park ramp" />
         </div>
         <div>
-          <Label>Cost per class (optional)</Label>
+          <Label>Cost per month (optional)</Label>
           <div className="flex items-center gap-2">
             <span className="text-fg-muted">₹</span>
             <TextInput
@@ -270,9 +270,9 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
               placeholder="0"
               className="!py-2"
             />
-            <span className="text-xs text-fg-muted whitespace-nowrap">per class</span>
+            <span className="text-xs text-fg-muted whitespace-nowrap">per month</span>
           </div>
-          <p className="text-[11px] text-fg-muted mt-1.5">Leave 0 or blank if you don't charge for this batch.</p>
+          <p className="text-[11px] text-fg-muted mt-1.5">Leave 0 or blank if you don't charge for this batch. Flat per student per month, regardless of class count.</p>
         </div>
         <div className="flex gap-2 pt-2">
           <Button variant="ghost" onClick={() => { reset(); onClose(); }} className="flex-1">Cancel</Button>
@@ -434,7 +434,7 @@ function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; 
           <TextInput value={location} onChange={(e) => setLocation(e.target.value)} />
         </div>
         <div>
-          <Label>Cost per class</Label>
+          <Label>Cost per month</Label>
           <div className="flex items-center gap-2">
             <span className="text-fg-muted">₹</span>
             <TextInput
@@ -447,7 +447,7 @@ function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; 
               placeholder="0"
               className="!py-2"
             />
-            <span className="text-xs text-fg-muted whitespace-nowrap">per class</span>
+            <span className="text-xs text-fg-muted whitespace-nowrap">per month</span>
           </div>
           <p className="text-[11px] text-fg-muted mt-1.5">Leave 0 or blank if you don't charge for this batch.</p>
         </div>
@@ -519,7 +519,7 @@ function BatchDetail({
       <div className="flex flex-wrap gap-1.5">
         <Pill>{batch.daysOfWeek.map((d) => DAY_NAMES[d]).join(' · ')}</Pill>
         <Pill color="cyan">{batch.startTime}–{batch.endTime}</Pill>
-        {(batch.costPerClass ?? 0) > 0 && <Pill color="orange">₹{batch.costPerClass}/class</Pill>}
+        {(batch.costPerClass ?? 0) > 0 && <Pill color="orange">₹{batch.costPerClass}/month</Pill>}
       </div>
       {batch.dayTimes && (
         <div className="flex flex-wrap gap-1 text-[11px] text-fg-secondary">
