@@ -17,6 +17,7 @@ export function ChartPage() {
   const attendance = useStore((s) => s.db.attendance);
   const students = useStore((s) => s.db.students);
   const memberships = useStore((s) => s.db.memberships);
+  const payments = useStore((s) => s.db.payments);
   const monthlyTarget = useStore((s) => s.db.teacher.monthlyTarget);
 
   const today = new Date();
@@ -26,6 +27,8 @@ export function ChartPage() {
 
   const from = startOfMonth(viewYear, viewMonth);
   const to = endOfMonth(viewYear, viewMonth);
+  // "YYYY-MM" key for the visible month — used to look up the PaymentRecord for each student.
+  const monthKey = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
 
   const goPrev = () => {
     if (viewMonth === 0) {
@@ -142,16 +145,18 @@ export function ChartPage() {
     return [...acc.entries()]
       .map(([studentId, stats]) => {
         const student = students.find((s) => s.id === studentId);
+        const payment = payments.find((p) => p.studentId === studentId && p.month === monthKey);
         return {
           studentId,
           name: student?.name ?? 'Unknown',
           ...stats,
           rate: stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0,
+          paid: payment?.amount ?? 0,
         };
       })
       .filter((r) => !candidateIds || candidateIds.has(r.studentId))
       .sort((a, b) => a.rate - b.rate || a.name.localeCompare(b.name));
-  }, [attendance, sessionsInMonth, students, memberships, batchFilter, membershipLookup]);
+  }, [attendance, sessionsInMonth, students, memberships, batchFilter, membershipLookup, payments, monthKey]);
 
   return (
     <div className="px-4 pb-12">
@@ -285,11 +290,14 @@ export function ChartPage() {
         <div className="space-y-1.5">
           {perStudent.map((s) => (
             <Card key={s.studentId} className="!p-3">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <div className="font-medium truncate">{s.name}</div>
                   <div className="text-xs text-fg-muted">
                     {s.present}/{s.total} classes
+                  </div>
+                  <div className={`text-[11px] mt-0.5 ${s.paid > 0 ? 'text-neon-green' : 'text-fg-muted'}`}>
+                    {s.paid > 0 ? `₹${s.paid.toLocaleString('en-IN')} paid` : '₹0 paid'}
                   </div>
                 </div>
                 <Pill color={s.rate >= 80 ? 'green' : s.rate >= 60 ? 'yellow' : 'pink'}>{s.rate}%</Pill>

@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import { SCHEMA_VERSION } from './types';
+import { getBatchTimeForDay, parseISODate } from './sessions';
 import type {
   DB,
   Batch,
@@ -260,12 +261,14 @@ export const useStore = create<StoreState>((set, get) => ({
     if (existing) return existing;
     const batch = get().db.batches.find((b) => b.id === batchId);
     if (!batch) throw new Error('Batch not found');
+    const dayOfWeek = parseISODate(date).getDay();
+    const { startTime, endTime } = getBatchTimeForDay(batch, dayOfWeek);
     const session: Session = {
       id: newId(),
       batchId,
       date,
-      startTime: batch.startTime,
-      endTime: batch.endTime,
+      startTime,
+      endTime,
       type: 'recurring',
       status: 'scheduled',
       cancelReason: null,
@@ -451,10 +454,12 @@ export const useStore = create<StoreState>((set, get) => ({
     const existing = db.sessions.find((s) => s.batchId === batchId && s.date === date);
     let session = existing;
     if (!session) {
-      // 2. Otherwise create a one-off session at the batch's normal times.
+      // 2. Otherwise create a one-off session at the batch's times for that day.
       const batch = db.batches.find((b) => b.id === batchId);
       if (!batch) throw new Error('Batch not found');
-      session = get().addOneOffSession(batchId, date, batch.startTime, batch.endTime);
+      const dayOfWeek = parseISODate(date).getDay();
+      const { startTime, endTime } = getBatchTimeForDay(batch, dayOfWeek);
+      session = get().addOneOffSession(batchId, date, startTime, endTime);
     }
     // 3. Write the attendance record (existing helper handles upsert + status flip).
     get().setAttendance(session.id, studentId, status);

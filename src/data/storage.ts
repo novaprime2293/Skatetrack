@@ -60,6 +60,17 @@ export async function loadDB(): Promise<DB | null> {
         if (batch && typeof batch === 'object' && batch.costPerClass === undefined) {
           batch.costPerClass = 0;
         }
+        // Forward-migration: populate dayTimes from startTime/endTime for v1.5 data.
+        // Existing batches had a single start/end time. New batches let the user set
+        // per-day times. On load, seed dayTimes with the existing time for every day
+        // in daysOfWeek so the per-day lookup works. Idempotent.
+        if (batch && typeof batch === 'object' && !batch.dayTimes && Array.isArray(batch.daysOfWeek)) {
+          const dt: Record<number, { startTime: string; endTime: string }> = {};
+          for (const d of batch.daysOfWeek) {
+            dt[d] = { startTime: batch.startTime, endTime: batch.endTime };
+          }
+          batch.dayTimes = dt;
+        }
       }
     }
     // Forward-migration: ensure payments array exists (added for manual payment entry).

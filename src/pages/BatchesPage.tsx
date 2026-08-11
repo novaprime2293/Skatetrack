@@ -65,7 +65,11 @@ export function BatchesPage() {
                   <div className="min-w-0">
                     <div className="font-semibold truncate">{b.name}</div>
                     <div className="text-xs text-fg-muted mt-1">
-                      {b.daysOfWeek.length === 0 ? 'No days' : b.daysOfWeek.map((d) => DAY_NAMES[d]).join(' · ')} · {b.startTime}–{b.endTime}
+                      {b.daysOfWeek.length === 0 ? 'No days' : b.daysOfWeek.map((d) => {
+                        const dt = b.dayTimes?.[d];
+                        const time = dt ? `${dt.startTime}–${dt.endTime}` : `${b.startTime}–${b.endTime}`;
+                        return `${DAY_NAMES[d]} ${time}`;
+                      }).join(' · ')}
                     </div>
                     {b.location && <div className="text-xs text-fg-muted mt-0.5">📍 {b.location}</div>}
                     <div className="text-xs text-fg-muted mt-1">{memberCount} student{memberCount === 1 ? '' : 's'}</div>
@@ -140,17 +144,53 @@ export function BatchesPage() {
   );
 }
 
-function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (input: { name: string; daysOfWeek: number[]; startTime: string; endTime: string; location?: string; costPerClass?: number }) => void }) {
+function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (input: { name: string; daysOfWeek: number[]; startTime: string; endTime: string; dayTimes?: Record<number, { startTime: string; endTime: string }>; location?: string; costPerClass?: number }) => void }) {
   const [name, setName] = useState('');
   const [days, setDays] = useState<number[]>([]);
-  const [start, setStart] = useState('16:00');
-  const [end, setEnd] = useState('17:00');
+  // Per-day time overrides. When a day is added, seed it with the default so the user sees a sensible value.
+  // If the user keeps all days the same, the result is identical to the single-time UX.
+  const [dayTimes, setDayTimes] = useState<Record<number, { startTime: string; endTime: string }>>({});
   const [location, setLocation] = useState('');
   const [cost, setCost] = useState<string>('');
 
   if (!open) return null;
-  const reset = () => { setName(''); setDays([]); setStart('16:00'); setEnd('17:00'); setLocation(''); setCost(''); };
+  const reset = () => { setName(''); setDays([]); setDayTimes({}); setLocation(''); setCost(''); };
   const costNum = parseFloat(cost);
+
+  // When a day is added, copy times from the first selected day (or use 16:00–17:00 default).
+  // When a day is removed, drop its time entry.
+  const toggleDay = (i: number) => {
+    setDays((cur) => {
+      const isSelected = cur.includes(i);
+      if (isSelected) {
+        setDayTimes((dt) => {
+          const next = { ...dt };
+          delete next[i];
+          return next;
+        });
+        return cur.filter((x) => x !== i);
+      }
+      // Seed new day with the first selected day's time, or 16:00–17:00 if this is the first day.
+      const firstDay = cur[0];
+      const seed = firstDay !== undefined ? dayTimes[firstDay] : { startTime: '16:00', endTime: '17:00' };
+      setDayTimes((dt) => ({ ...dt, [i]: { ...(seed ?? { startTime: '16:00', endTime: '17:00' }) } }));
+      return [...cur, i].sort();
+    });
+  };
+
+  const updateDayTime = (i: number, field: 'startTime' | 'endTime', value: string) => {
+    setDayTimes((dt) => {
+      const cur = dt[i] ?? { startTime: '16:00', endTime: '17:00' };
+      return { ...dt, [i]: { ...cur, [field]: value } };
+    });
+  };
+
+  // Detect whether all selected days share the same start/end time. If they do, we can show a
+  // "same time for all" hint and also use the simple startTime/endTime fields on the batch.
+  const allSameTime = days.length > 0 && days.every(
+    (d) => dayTimes[d]?.startTime === dayTimes[days[0]]?.startTime && dayTimes[d]?.endTime === dayTimes[days[0]]?.endTime,
+  );
+  const firstDayTime = days[0] !== undefined ? dayTimes[days[0]] : { startTime: '16:00', endTime: '17:00' };
 
   return (
     <Modal open onClose={() => { reset(); onClose(); }} title="New batch">
@@ -165,7 +205,7 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
             {DAY_NAMES.map((d, i) => (
               <button
                 key={i}
-                onClick={() => setDays((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort()))}
+                onClick={() => toggleDay(i)}
                 className={`aspect-square rounded-lg text-xs font-bold border transition-all ${
                   days.includes(i) ? 'bg-neon-green text-bg-base border-neon-green' : 'bg-bg-card border-border text-fg-secondary hover:text-fg-primary'
                 }`}
@@ -175,16 +215,43 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+
+        {days.length > 0 && (
           <div>
-            <Label>Start</Label>
-            <TextInput type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+            <div className="flex items-center justify-between mb-1.5">
+              <Label>Time for each day</Label>
+              {allSameTime && (
+                <span className="text-[10px] text-fg-muted uppercase tracking-wider">All days same time</span>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              {days.map((d) => {
+                const t = dayTimes[d] ?? { startTime: '16:00', endTime: '17:00' };
+                return (
+                  <div key={d} className="grid grid-cols-[60px_1fr_1fr] items-center gap-2">
+                    <span className="text-xs font-bold text-fg-secondary">{DAY_NAMES[d]}</span>
+                    <input
+                      type="time"
+                      value={t.startTime}
+                      onChange={(e) => updateDayTime(d, 'startTime', e.target.value)}
+                      className="bg-bg-base border border-border rounded-xl px-2 py-1.5 text-sm text-fg-primary focus:outline-none focus:border-neon-green focus:ring-1 focus:ring-neon-green/50"
+                      aria-label={`${DAY_NAMES[d]} start time`}
+                    />
+                    <input
+                      type="time"
+                      value={t.endTime}
+                      onChange={(e) => updateDayTime(d, 'endTime', e.target.value)}
+                      className="bg-bg-base border border-border rounded-xl px-2 py-1.5 text-sm text-fg-primary focus:outline-none focus:border-neon-green focus:ring-1 focus:ring-neon-green/50"
+                      aria-label={`${DAY_NAMES[d]} end time`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-fg-muted mt-1.5">Each day can have its own start and end time. Set them once per day.</p>
           </div>
-          <div>
-            <Label>End</Label>
-            <TextInput type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
-          </div>
-        </div>
+        )}
+
         <div>
           <Label>Location (optional)</Label>
           <TextInput value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Cubbon Park ramp" />
@@ -212,11 +279,19 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
           <Button
             disabled={!name.trim() || days.length === 0 || (cost.trim() !== '' && (!Number.isFinite(costNum) || costNum < 0))}
             onClick={() => {
+              // Build dayTimes payload. Only emit per-day overrides if times differ from the first day.
+              let dayTimesPayload: Record<number, { startTime: string; endTime: string }> | undefined;
+              if (allSameTime) {
+                dayTimesPayload = undefined; // rely on top-level startTime/endTime
+              } else {
+                dayTimesPayload = { ...dayTimes };
+              }
               onCreate({
                 name: name.trim(),
                 daysOfWeek: days,
-                startTime: start,
-                endTime: end,
+                startTime: firstDayTime.startTime,
+                endTime: firstDayTime.endTime,
+                dayTimes: dayTimesPayload,
                 location: location.trim() || undefined,
                 costPerClass: cost.trim() === '' ? 0 : costNum,
               });
@@ -232,17 +307,56 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
   );
 }
 
-function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; onClose: () => void; onSave: (patch: { name: string; daysOfWeek: number[]; startTime: string; endTime: string; location?: string; costPerClass: number }) => void }) {
+function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; onClose: () => void; onSave: (patch: { name: string; daysOfWeek: number[]; startTime: string; endTime: string; dayTimes?: Record<number, { startTime: string; endTime: string }>; location?: string; costPerClass: number }) => void }) {
   const batch = useStore((s) => s.db.batches.find((b) => b.id === batchId));
   const [name, setName] = useState(batch?.name ?? '');
   const [days, setDays] = useState<number[]>(batch?.daysOfWeek ?? []);
-  const [start, setStart] = useState(batch?.startTime ?? '16:00');
-  const [end, setEnd] = useState(batch?.endTime ?? '17:00');
+  // Hydrate per-day times from batch.dayTimes, falling back to the batch's start/end.
+  // Runs once on mount; later edits stay in component state.
+  const [dayTimes, setDayTimes] = useState<Record<number, { startTime: string; endTime: string }>>(() => {
+    if (!batch) return {};
+    const out: Record<number, { startTime: string; endTime: string }> = {};
+    for (const d of batch.daysOfWeek) {
+      const dt = batch.dayTimes?.[d];
+      out[d] = { startTime: dt?.startTime ?? batch.startTime, endTime: dt?.endTime ?? batch.endTime };
+    }
+    return out;
+  });
   const [location, setLocation] = useState(batch?.location ?? '');
   const [cost, setCost] = useState<string>(batch?.costPerClass ? String(batch.costPerClass) : '');
   const costNum = parseFloat(cost);
 
   if (!batchId || !batch) return null;
+
+  const toggleDay = (i: number) => {
+    setDays((cur) => {
+      const isSelected = cur.includes(i);
+      if (isSelected) {
+        setDayTimes((dt) => {
+          const next = { ...dt };
+          delete next[i];
+          return next;
+        });
+        return cur.filter((x) => x !== i);
+      }
+      const firstDay = cur[0];
+      const seed = firstDay !== undefined ? dayTimes[firstDay] : { startTime: batch.startTime, endTime: batch.endTime };
+      setDayTimes((dt) => ({ ...dt, [i]: { ...seed } }));
+      return [...cur, i].sort();
+    });
+  };
+
+  const updateDayTime = (i: number, field: 'startTime' | 'endTime', value: string) => {
+    setDayTimes((dt) => {
+      const cur = dt[i] ?? { startTime: batch.startTime, endTime: batch.endTime };
+      return { ...dt, [i]: { ...cur, [field]: value } };
+    });
+  };
+
+  const allSameTime = days.length > 0 && days.every(
+    (d) => dayTimes[d]?.startTime === dayTimes[days[0]]?.startTime && dayTimes[d]?.endTime === dayTimes[days[0]]?.endTime,
+  );
+  const firstDayTime = days[0] !== undefined ? dayTimes[days[0]] : { startTime: batch.startTime, endTime: batch.endTime };
 
   return (
     <Modal open onClose={onClose} title="Edit batch">
@@ -257,7 +371,7 @@ function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; 
             {DAY_NAMES.map((d, i) => (
               <button
                 key={i}
-                onClick={() => setDays((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort()))}
+                onClick={() => toggleDay(i)}
                 className={`aspect-square rounded-lg text-xs font-bold border transition-all ${
                   days.includes(i) ? 'bg-neon-green text-bg-base border-neon-green' : 'bg-bg-card border-border text-fg-secondary hover:text-fg-primary'
                 }`}
@@ -267,10 +381,43 @@ function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; 
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div><Label>Start</Label><TextInput type="time" value={start} onChange={(e) => setStart(e.target.value)} /></div>
-          <div><Label>End</Label><TextInput type="time" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
-        </div>
+
+        {days.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <Label>Time for each day</Label>
+              {allSameTime && (
+                <span className="text-[10px] text-fg-muted uppercase tracking-wider">All days same time</span>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              {days.map((d) => {
+                const t = dayTimes[d] ?? { startTime: batch.startTime, endTime: batch.endTime };
+                return (
+                  <div key={d} className="grid grid-cols-[60px_1fr_1fr] items-center gap-2">
+                    <span className="text-xs font-bold text-fg-secondary">{DAY_NAMES[d]}</span>
+                    <input
+                      type="time"
+                      value={t.startTime}
+                      onChange={(e) => updateDayTime(d, 'startTime', e.target.value)}
+                      className="bg-bg-base border border-border rounded-xl px-2 py-1.5 text-sm text-fg-primary focus:outline-none focus:border-neon-green focus:ring-1 focus:ring-neon-green/50"
+                      aria-label={`${DAY_NAMES[d]} start time`}
+                    />
+                    <input
+                      type="time"
+                      value={t.endTime}
+                      onChange={(e) => updateDayTime(d, 'endTime', e.target.value)}
+                      className="bg-bg-base border border-border rounded-xl px-2 py-1.5 text-sm text-fg-primary focus:outline-none focus:border-neon-green focus:ring-1 focus:ring-neon-green/50"
+                      aria-label={`${DAY_NAMES[d]} end time`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-fg-muted mt-1.5">Each day can have its own start and end time.</p>
+          </div>
+        )}
+
         <div>
           <Label>Location</Label>
           <TextInput value={location} onChange={(e) => setLocation(e.target.value)} />
@@ -297,7 +444,23 @@ function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; 
           <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
           <Button
             disabled={!name.trim() || days.length === 0 || (cost.trim() !== '' && (!Number.isFinite(costNum) || costNum < 0))}
-            onClick={() => onSave({ name: name.trim(), daysOfWeek: days, startTime: start, endTime: end, location: location.trim() || undefined, costPerClass: cost.trim() === '' ? 0 : costNum })}
+            onClick={() => {
+              let dayTimesPayload: Record<number, { startTime: string; endTime: string }> | undefined;
+              if (allSameTime) {
+                dayTimesPayload = undefined;
+              } else {
+                dayTimesPayload = { ...dayTimes };
+              }
+              onSave({
+                name: name.trim(),
+                daysOfWeek: days,
+                startTime: firstDayTime.startTime,
+                endTime: firstDayTime.endTime,
+                dayTimes: dayTimesPayload,
+                location: location.trim() || undefined,
+                costPerClass: cost.trim() === '' ? 0 : costNum,
+              });
+            }}
             className="flex-1"
           >
             Save
@@ -322,7 +485,7 @@ function BatchDetail({
   onDeleteOneOff,
   onMarkSession,
 }: {
-  batch: { id: string; name: string; startTime: string; endTime: string; daysOfWeek: number[]; costPerClass?: number; archivedAt?: string | null };
+  batch: { id: string; name: string; startTime: string; endTime: string; daysOfWeek: number[]; dayTimes?: Record<number, { startTime: string; endTime: string }>; costPerClass?: number; archivedAt?: string | null };
   students: Array<{ id: string; name: string; archivedAt?: string | null }>;
   members: Array<{ studentId: string }>;
   sessions: Array<{ id: string; date: string; type: string; status: string }>;
@@ -347,6 +510,19 @@ function BatchDetail({
         <Pill color="cyan">{batch.startTime}–{batch.endTime}</Pill>
         {(batch.costPerClass ?? 0) > 0 && <Pill color="orange">₹{batch.costPerClass}/class</Pill>}
       </div>
+      {batch.dayTimes && (
+        <div className="flex flex-wrap gap-1 text-[11px] text-fg-secondary">
+          {batch.daysOfWeek.map((d) => {
+            const dt = batch.dayTimes?.[d];
+            if (!dt) return null;
+            return (
+              <span key={d} className="bg-bg-card border border-border rounded-full px-2 py-0.5">
+                {DAY_NAMES[d]} {dt.startTime}–{dt.endTime}
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">

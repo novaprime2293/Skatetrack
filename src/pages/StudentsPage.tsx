@@ -279,7 +279,11 @@ export function StudentsPage() {
                 >
                   <div className="font-semibold">{b.name}</div>
                   <div className="text-xs text-fg-muted mt-0.5">
-                    {b.daysOfWeek.map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(' · ')} · {b.startTime}–{b.endTime}
+                    {b.daysOfWeek.map((d) => {
+                      const dt = b.dayTimes?.[d];
+                      const time = dt ? `${dt.startTime}–${dt.endTime}` : `${b.startTime}–${b.endTime}`;
+                      return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]} ${time}`;
+                    }).join(' · ')}
                   </div>
                 </button>
               );

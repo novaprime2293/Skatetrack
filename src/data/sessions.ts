@@ -38,6 +38,19 @@ export function batchRunsOnDate(batch: Batch, date: string): boolean {
   return batch.daysOfWeek.includes(day);
 }
 
+/**
+ * Returns the start/end time for a batch on a specific day of the week.
+ * Prefers per-day override in `batch.dayTimes`; falls back to the batch's default
+ * `startTime`/`endTime` when the day isn't overridden (or dayTimes is missing).
+ * This is the single source of truth — every place that needs to know "what time
+ * does this batch run on this day" should go through here.
+ */
+export function getBatchTimeForDay(batch: Batch, dayOfWeek: number): { startTime: string; endTime: string } {
+  const dt = batch.dayTimes?.[dayOfWeek];
+  if (dt && dt.startTime && dt.endTime) return dt;
+  return { startTime: batch.startTime, endTime: batch.endTime };
+}
+
 export function batchSessionsInRange(batch: Batch, from: string, to: string): string[] {
   if (batch.daysOfWeek.length === 0) return [];
   const out: string[] = [];
@@ -72,12 +85,14 @@ export function findOrCreateRecurringSessions(
     if (existing) {
       out.push(existing);
     } else {
+      const dayOfWeek = parseISODate(date).getDay();
+      const { startTime, endTime } = getBatchTimeForDay(batch, dayOfWeek);
       out.push({
         id: `virtual-${batch.id}-${date}`,
         batchId: batch.id,
         date,
-        startTime: batch.startTime,
-        endTime: batch.endTime,
+        startTime,
+        endTime,
         type: 'recurring',
         status: 'scheduled',
         cancelReason: null,
