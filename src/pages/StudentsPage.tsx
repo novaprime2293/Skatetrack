@@ -486,6 +486,7 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
   const ensureSession = useStore((s) => s.ensureSessionForBatchDate);
   const setAttendance = useStore((s) => s.setAttendance);
   const setAdhocAttendance = useStore((s) => s.setAdhocAttendance);
+  const removeAttendance = useStore((s) => s.removeAttendance);
   const [name, setName] = useState(student.name);
   const [parent, setParent] = useState(student.parentContact ?? '');
   const [showManageBatches, setShowManageBatches] = useState(false);
@@ -782,24 +783,77 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
         studentName={student.name}
       />
 
-      {pickerFor && (
-        <Modal open onClose={() => setPickerFor(null)} title={pickerFor.kind === 'adhoc' ? 'Add attendance' : 'Mark attendance'}>
-          <div className="space-y-3">
-            <div className="text-sm text-fg-secondary">
-              {formatISODateLong(pickerFor.date)} · {pickerFor.batchName}
+      {pickerFor && (() => {
+        // Look up the existing attendance record for this scheduled cell (if any), so we can
+        // offer a Remove button — there's nothing to remove for an adhoc (empty-cell) tap.
+        const existingRecord =
+          pickerFor.kind === 'scheduled'
+            ? attendance.find(
+                (a) => a.sessionId === pickerFor.sessionId && a.studentId === student.id
+              )
+            : undefined;
+        return (
+          <Modal
+            open
+            onClose={() => setPickerFor(null)}
+            title={
+              pickerFor.kind === 'adhoc'
+                ? 'Add attendance'
+                : existingRecord
+                ? 'Edit attendance'
+                : 'Mark attendance'
+            }
+          >
+            <div className="space-y-3">
+              <div className="text-sm text-fg-secondary">
+                {formatISODateLong(pickerFor.date)} · {pickerFor.batchName}
+              </div>
+              {pickerFor.kind === 'adhoc' && (
+                <p className="text-xs text-fg-muted">
+                  No class scheduled for this batch on this day. Pick a status to record an extra session.
+                </p>
+              )}
+              {existingRecord && (
+                <div className="text-xs text-fg-muted">
+                  Currently marked{' '}
+                  <span
+                    className={
+                      existingRecord.status === 'present'
+                        ? 'text-neon-green font-bold'
+                        : 'text-neon-pink font-bold'
+                    }
+                  >
+                    {existingRecord.status}
+                  </span>
+                  . Pick a new status or remove it.
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button variant="danger" onClick={() => handlePick('absent')} className="!py-4">✗ Absent</Button>
+                <Button onClick={() => handlePick('present')} className="!py-4">✓ Present</Button>
+              </div>
+              {existingRecord && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `Remove this attendance mark? (${existingRecord.status} on ${formatISODate(pickerFor.date)})`
+                      )
+                    ) {
+                      removeAttendance(existingRecord.id);
+                      setPickerFor(null);
+                    }
+                  }}
+                  className="w-full !text-neon-pink"
+                >
+                  🗑 Remove this mark
+                </Button>
+              )}
             </div>
-            {pickerFor.kind === 'adhoc' && (
-              <p className="text-xs text-fg-muted">
-                No class scheduled for this batch on this day. Pick a status to record an extra session.
-              </p>
-            )}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <Button variant="danger" onClick={() => handlePick('absent')} className="!py-4">✗ Absent</Button>
-              <Button onClick={() => handlePick('present')} className="!py-4">✓ Present</Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
