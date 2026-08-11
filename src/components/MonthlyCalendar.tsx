@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactElement } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import {
@@ -303,24 +303,12 @@ export function MonthlyCalendar() {
                   if (!cell) return <div key={d} className="h-6 mx-0.5" />;
                   const isFuture = dateStr > todayIso;
 
-                  // Subtle day indicator(s) — tiny dots at the top of the cell. One cyan dot
-                  // per batch that has this day in its daysOfWeek (multi-batch stacks multiple
-                  // dots); one orange dot if any session is a reschedule (one-off or a session
-                  // scheduled on a non-daysOfWeek day).
-                  const dots: ReactElement[] = [];
-                  // Count how many of the student's batches have this day as a class day.
-                  const normalBatchCount = row.batches.filter((b) => b.daysOfWeek.includes(parseISODate(dateStr).getDay())).length;
-                  for (let i = 0; i < Math.min(normalBatchCount, 2); i++) {
-                    dots.push(<span key={`c${i}`} aria-hidden="true" className="w-1 h-1 rounded-full bg-neon-cyan/70" />);
-                  }
-                  if (cell.isReschedule) {
-                    dots.push(<span key="r" aria-hidden="true" className="w-1 h-1 rounded-full bg-neon-orange/80" />);
-                  }
-                  const indicator = dots.length > 0 ? (
-                    <span aria-hidden="true" className="absolute top-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                      {dots}
-                    </span>
-                  ) : null;
+                  // Border (dotted) — apply when ANY session on this day matches the rule.
+                  const borderClasses = cell.isReschedule
+                    ? 'border border-dotted border-neon-orange/80'
+                    : cell.isNormalClassDay
+                    ? 'border border-dotted border-neon-cyan/70'
+                    : '';
 
                   // Multi-session stacked rendering — show up to 2 small marks (✓/✗/dot).
                   if (cell.sessions.length >= 2) {
@@ -343,10 +331,9 @@ export function MonthlyCalendar() {
                       <button
                         key={d}
                         onClick={() => handleCellTap(row.id, row.name, dateStr, cell)}
-                        className={`relative h-6 mx-0.5 rounded ${bg} flex items-center justify-center gap-0.5 text-[10px] font-bold active:scale-95`}
+                        className={`relative h-6 mx-0.5 rounded ${bg} ${borderClasses} flex items-center justify-center gap-0.5 text-[10px] font-bold active:scale-95`}
                         title={`${row.name} · ${formatISODate(dateStr)} · ${cell.sessions.length} sessions${cell.isReschedule ? ' · rescheduled' : ''}`}
                       >
-                        {indicator}
                         {marks}
                       </button>
                     );
@@ -366,10 +353,9 @@ export function MonthlyCalendar() {
                       <button
                         key={d}
                         onClick={() => handleCellTap(row.id, row.name, dateStr, cell)}
-                        className={`relative h-6 mx-0.5 rounded ${bg} flex items-center justify-center text-[10px] font-bold active:scale-95`}
+                        className={`relative h-6 mx-0.5 rounded ${bg} ${borderClasses} flex items-center justify-center text-[10px] font-bold active:scale-95`}
                         title={`${row.name} · ${formatISODate(dateStr)} · ${cell.sessions[0].batchName}${st ? ` · ${st}` : ''}${cell.isReschedule ? ' · rescheduled' : ''}`}
                       >
-                        {indicator}
                         {mark}
                       </button>
                     );
@@ -381,12 +367,10 @@ export function MonthlyCalendar() {
                       <button
                         key={d}
                         onClick={() => handleCellTap(row.id, row.name, dateStr, cell)}
-                        className={`relative h-6 mx-0.5 rounded bg-transparent flex items-center justify-center text-[10px] active:scale-95`}
+                        className={`relative h-6 mx-0.5 rounded bg-transparent ${borderClasses} flex items-center justify-center text-[10px] active:scale-95`}
                         title={`${row.name} · ${formatISODate(dateStr)} · ${isFuture ? 'upcoming class' : 'unmarked class — tap to add'}`}
                         aria-label={`${isFuture ? 'Upcoming' : 'Unmarked'} class day for ${row.name}`}
-                      >
-                        {indicator}
-                      </button>
+                      />
                     );
                   }
 
@@ -403,8 +387,8 @@ export function MonthlyCalendar() {
         <div className="flex items-center gap-1"><span className="font-bold text-neon-green">✓</span>Present</div>
         <div className="flex items-center gap-1"><span className="font-bold text-neon-pink">✗</span>Absent</div>
         <div className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-bg-card border border-border" />Unmarked</div>
-        <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-cyan/70" />Class day</div>
-        <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-orange/80" />Rescheduled</div>
+        <div className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm border border-dotted border-neon-cyan/70" />Class day</div>
+        <div className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm border border-dotted border-neon-orange/80" />Rescheduled</div>
       </div>
 
       {/* Picker modal — two stages: pick a batch (if multiple candidates), then pick status. */}

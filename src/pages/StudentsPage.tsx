@@ -689,23 +689,11 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
                     const sess = row.sessionByDate.get(dateStr);
                     const isBatchDay = row.daysOfWeek.includes(parseISODate(dateStr).getDay());
                     const hasOneOff = !!sess && sess.type === 'one-off';
-                    // Reschedule = session is a one-off OR sits on a non-daysOfWeek day.
-                    const isReschedule = hasOneOff || (!!sess && !isBatchDay);
+                    // A cell is a "batch day" if the batch normally runs that weekday OR a one-off/special was added for that date.
+                    const isBatchDayCell = isBatchDay || hasOneOff;
                     const status = sess
                       ? attendance.find((a) => a.sessionId === sess.id && a.studentId === student.id)?.status ?? null
                       : null;
-                    // Subtle day indicators: cyan dot = normal class day as configured,
-                    // orange dot = reschedule (one-off or out-of-pattern session).
-                    const indicator = (
-                      <span aria-hidden="true" className="absolute top-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                        {isBatchDay && (
-                          <span aria-hidden="true" className="w-1 h-1 rounded-full bg-neon-cyan/70" />
-                        )}
-                        {isReschedule && (
-                          <span aria-hidden="true" className="w-1 h-1 rounded-full bg-neon-orange/80" />
-                        )}
-                      </span>
-                    );
                     if (sess) {
                       // Scheduled cell — show status (present / absent / unmarked-but-scheduled).
                       const bg =
@@ -721,13 +709,18 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
                           className={`relative h-7 mx-0.5 rounded ${bg} flex items-center justify-center text-[10px] font-bold active:scale-95`}
                           aria-label={`${dateStr} ${row.batchName} ${status ?? 'unmarked'}`}
                         >
-                          {indicator}
+                          {/* Batch-day marker — small cyan dot at the top, present on every scheduled class day regardless of attendance status. */}
+                          {isBatchDayCell && (
+                            <span
+                              aria-hidden="true"
+                              className="absolute top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neon-cyan/70"
+                            />
+                          )}
                           {status === 'present' ? '✓' : status === 'absent' ? '✗' : ''}
                         </button>
                       );
                     }
-                    // Empty cell — no session. Tappable for adhoc attendance. Show cyan dot
-                    // on normal class days so the configured schedule is always visible.
+                    // Empty cell — no session. Tappable for adhoc attendance.
                     return (
                       <button
                         key={d}
@@ -736,8 +729,7 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
                         aria-label={`Mark ${row.batchName} on ${dateStr}`}
                         title={`Tap to mark ${row.batchName} attendance on ${dateStr}`}
                       >
-                        {isBatchDay && indicator}
-                        {!isBatchDay && <span className="opacity-50">+</span>}
+                        <span className="opacity-50">+</span>
                       </button>
                     );
                   })}
@@ -752,7 +744,6 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-neon-pink" />Absent</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 rounded border border-border bg-bg-card" />Unmarked</div>
           <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-cyan/70" />Class day</div>
-          <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-orange/80" />Rescheduled</div>
           <div className="flex items-center gap-1"><span className="opacity-60">+</span>Tap empty to add</div>
         </div>
       </div>
