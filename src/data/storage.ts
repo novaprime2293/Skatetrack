@@ -11,8 +11,9 @@ import type { DB } from './types';
 import { SCHEMA_VERSION } from './types';
 
 const DB_NAME = 'skatetrack';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SNAPSHOT_STORE = 'snapshots';
+const BACKUP_STORE = 'backups';
 // Convention: skatetrack-<feature>-v1 (full feature name, kebab-case, version suffix).
 // See MEMORY.md Lesson L-01 — never use placeholders. 'current' was a generic placeholder
 // that would collide with any future archived/backup snapshots in the same store.
@@ -23,10 +24,15 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains(SNAPSHOT_STORE)) {
           db.createObjectStore(SNAPSHOT_STORE);
         }
+        if (!db.objectStoreNames.contains(BACKUP_STORE)) {
+          db.createObjectStore(BACKUP_STORE, { keyPath: 'id' });
+        }
+        // v1 → v2: added backups object store for in-app daily snapshots.
+        void oldVersion;
       },
     });
   }
@@ -80,8 +86,99 @@ export async function clearDB(): Promise<void> {
   try {
     const idb = await getDB();
     await idb.delete(SNAPSHOT_STORE, SNAPSHOT_KEY);
+    // Also clear all backup snapshots so a reset truly wipes state.
+    await idb.clear(BACKUP_STORE);
   } catch (e) {
     console.error('Skatetrack: failed to clear DB', e);
+  }
+}
+
+// ─── In-app backup snapshots ───────────────────────────────────────────────
+//
+// We keep at most MAX_BACKUPS snapshots (default 2). Each is a frozen copy of the
+// DB at a point in time. We rotate daily: if a snapshot already exists for today,
+// we just refresh its data; otherwise we create a new one (which pushes out the
+// oldest). The user can restore any snapshot from Settings → Backups.
+
+import type { ID } from './types';
+
+export const MAX_BACKUPS = 2;
+
+export interface BackupSnapshot {
+  id: ID;
+  /** ISO timestamp. */
+  timestamp: string;
+  /** YYYY-MM-DD derived from timestamp — used for "one snapshot per day" semantics. */
+  date: string;
+  data: DB;
+}
+
+/**
+ * Save a backup snapshot of the current DB. Honors the "one per day, max 2 total" rule:
+ *   - If today's snapshot exists, replace its data (keeps id + date).
+ *   - Else create a new snapshot, then prune to MAX_BACKUPS newest.
+ */
+export async function saveBackupSnapshot(db: DB): Promise<void> {
+  try {
+    const idb = await getDB();
+    const existing = (await idb.getAll(BACKUP_STORE)) as BackupSnapshot[];
+    const today = new Date().toISOString().slice(0, 10);
+    const todays = existing.find((s) => s.date === today);
+    if (todays) {
+      todays.data = db;
+      todays.timestamp = new Date().toISOString();
+      await idb.put(BACKUP_STORE, todays);
+      return;
+    }
+    const fresh: BackupSnapshot = {
+      id: newId(),
+      timestamp: new Date().toISOString(),
+      date: today,
+      data: db,
+    };
+    // Newest first; keep MAX_BACKUPS newest.
+    const next = [...existing, fresh]
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, MAX_BACKUPS);
+    // Replace store contents with the pruned list.
+    const tx = idb.transaction(BACKUP_STORE, 'readwrite');
+    await tx.store.clear();
+    for (const snap of next) {
+      await tx.store.put(snap);
+    }
+    await tx.done;
+  } catch (e) {
+    console.error('Skatetrack: failed to save backup snapshot', e);
+  }
+}
+
+export async function loadBackupSnapshots(): Promise<BackupSnapshot[]> {
+  try {
+    const idb = await getDB();
+    const list = (await idb.getAll(BACKUP_STORE)) as BackupSnapshot[];
+    return list.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  } catch (e) {
+    console.error('Skatetrack: failed to load backup snapshots', e);
+    return [];
+  }
+}
+
+export async function deleteBackupSnapshot(id: string): Promise<void> {
+  try {
+    const idb = await getDB();
+    await idb.delete(BACKUP_STORE, id);
+  } catch (e) {
+    console.error('Skatetrack: failed to delete backup snapshot', e);
+  }
+}
+
+/** Returns the count of backup snapshots currently stored. */
+export async function backupCount(): Promise<number> {
+  try {
+    const idb = await getDB();
+    return await idb.count(BACKUP_STORE);
+  } catch {
+    return 0;
   }
 }
 

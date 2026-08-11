@@ -203,6 +203,9 @@ export function StudentReport({
             </div>
           </div>
         )}
+
+        {/* Monthly calendar grid */}
+        <CalendarGrid studentId={studentId} from={from} />
       </div>
 
       {/* Payment breakdown */}
@@ -449,5 +452,215 @@ export function DownloadReportModal({
         </div>
       </Modal>
     </>
+  );
+}
+
+/**
+ * Inline monthly calendar grid for the downloadable report. Renders every day of the visible
+ * month with a color-coded status (present = green, absent = red, class day = outlined,
+ * no class = empty). Strict semantics: any absent → red. Inline styles only so html2canvas
+ * can capture cleanly.
+ */
+function CalendarGrid({
+  studentId,
+  from,
+}: {
+  studentId: string;
+  from: string;
+  // to is unused; last day derived from `from`. Kept in call-site signature for clarity.
+}) {
+  const sessions = useStore((s) => s.db.sessions);
+  const attendance = useStore((s) => s.db.attendance);
+  const batches = useStore((s) => s.db.batches);
+  const memberships = useStore((s) => s.db.memberships);
+
+  const cells = useMemo(() => {
+    const fromParts = from.split('-').map(Number);
+    const year = fromParts[0];
+    const monthIdx = fromParts[1] - 1;
+    const lastDay = new Date(year, monthIdx + 1, 0).getDate();
+
+    // Active batches for this student (current membership or during the session date).
+    const studentBatches = batches.filter((b) => {
+      if (b.archivedAt) return false;
+      const ms = memberships.find(
+        (m) => m.studentId === studentId && m.batchId === b.id && m.removedDate === null
+      );
+      return Boolean(ms);
+    });
+
+    const out: Array<{
+      day: number;
+      date: string;
+      dayOfWeek: number;
+      isClassDay: boolean;
+      status: 'present' | 'absent' | 'none';
+    }> = [];
+
+    for (let d = 1; d <= lastDay; d++) {
+      const dateStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dayOfWeek = new Date(year, monthIdx, d).getDay();
+      const isClassDay = studentBatches.some((b) => b.daysOfWeek.includes(dayOfWeek));
+      // Find any attendance record for this student on this date across active batches.
+      const dayAttendance = attendance
+        .filter((a) => a.studentId === studentId)
+        .map((a) => sessions.find((s) => s.id === a.sessionId))
+        .filter((s): s is NonNullable<typeof s> => Boolean(s) && s!.date === dateStr && s!.status !== 'cancelled');
+      let status: 'present' | 'absent' | 'none' = 'none';
+      if (dayAttendance.length > 0) {
+        const records = dayAttendance
+          .map((s) => attendance.find((a) => a.sessionId === s.id && a.studentId === studentId)?.status ?? null)
+          .filter((x): x is 'present' | 'absent' => x !== null);
+        if (records.length > 0) {
+          status = records.every((r) => r === 'present') ? 'present' : 'absent';
+        }
+      }
+      out.push({ day: d, date: dateStr, dayOfWeek, isClassDay, status });
+    }
+    return out;
+  }, [studentId, from, sessions, attendance, batches, memberships]);
+
+  // Arrange into weeks (Sun start) for a true calendar look.
+  const weeks: Array<Array<(typeof cells)[number] | null>> = [];
+  const firstDayOfWeek = new Date(
+    Number(cells[0]?.date.split('-')[0]),
+    Number(cells[0]?.date.split('-')[1]) - 1,
+    1
+  ).getDay();
+  let week: Array<(typeof cells)[number] | null> = Array(firstDayOfWeek).fill(null);
+  for (const c of cells) {
+    week.push(c);
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
+  }
+  if (week.length > 0) {
+    while (week.length < 7) week.push(null);
+    weeks.push(week);
+  }
+
+  const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+  return (
+    <div style={{ marginTop: '18px' }}>
+      <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#00f0ff', marginBottom: '10px' }}>
+        Monthly calendar
+      </div>
+      <div
+        style={{
+          background: '#1a1a1a',
+          border: '1px solid #333',
+          borderRadius: '10px',
+          padding: '12px',
+        }}
+      >
+        {/* Day-of-week header */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            gap: '4px',
+            marginBottom: '6px',
+          }}
+        >
+          {dayLabels.map((d, i) => (
+            <div
+              key={i}
+              style={{
+                textAlign: 'center',
+                fontSize: '10px',
+                color: '#888',
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+                fontWeight: 700,
+              }}
+            >
+              {d}
+            </div>
+          ))}
+        </div>
+        {/* Day cells, week by week */}
+        {weeks.map((w, wi) => (
+          <div
+            key={wi}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: '4px',
+              marginBottom: '4px',
+            }}
+          >
+            {w.map((cell, ci) => {
+              if (!cell) {
+                return <div key={ci} style={{ height: '34px' }} />;
+              }
+              const bg =
+                cell.status === 'present'
+                  ? '#39ff14'
+                  : cell.status === 'absent'
+                  ? '#ff2e93'
+                  : '#0a0a0a';
+              const label =
+                cell.status === 'present'
+                  ? '\u2713'
+                  : cell.status === 'absent'
+                  ? '\u2717'
+                  : String(cell.day);
+              const labelColor =
+                cell.status === 'present' || cell.status === 'absent' ? '#0a0a0a' : '#aaa';
+              const showDotted = cell.isClassDay && cell.status === 'none';
+              const border = showDotted ? '1px dotted #00f0ff' : '1px solid #222';
+              return (
+                <div
+                  key={ci}
+                  style={{
+                    height: '34px',
+                    background: bg,
+                    border,
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: cell.status === 'none' ? '11px' : '14px',
+                    fontWeight: 700,
+                    color: labelColor,
+                  }}
+                  title={`${cell.date} \u00b7 ${cell.status === 'present' ? 'Present' : cell.status === 'absent' ? 'Absent' : cell.isClassDay ? 'Class day (unmarked)' : 'No class'}`}
+                >
+                  {label}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        <div
+          style={{
+            display: 'flex',
+            gap: '14px',
+            fontSize: '10px',
+            color: '#888',
+            marginTop: '10px',
+            paddingTop: '10px',
+            borderTop: '1px solid #222',
+            textTransform: 'uppercase',
+            letterSpacing: '1px',
+          }}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '3px', background: '#39ff14' }} />
+            Present
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '3px', background: '#ff2e93' }} />
+            Absent
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '3px', border: '1px dotted #00f0ff' }} />
+            Class day
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

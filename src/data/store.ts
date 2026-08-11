@@ -15,7 +15,7 @@ import type {
   AttendanceRecord,
   PaymentRecord,
 } from './types';
-import { newId, nowISO, saveDB, loadDB, clearDB } from './storage';
+import { newId, nowISO, saveDB, loadDB, clearDB, saveBackupSnapshot } from './storage';
 
 function emptyDB(): DB {
   return {
@@ -86,12 +86,21 @@ interface StoreState {
   exportJSON: () => string;
   importJSON: (json: string) => Promise<{ ok: boolean; error?: string }>;
   resetAll: () => Promise<void>;
+
+  /**
+   * Replace the entire DB with the contents of a backup snapshot. The caller passes
+   * the snapshot's data; we persist it as the new active DB (which itself triggers
+   * a fresh backup snapshot, so today's record is preserved).
+   */
+  restoreFromBackup: (data: DB) => void;
 }
 
 // Fire-and-forget persistence. Writes are sync to the in-memory model.
 // Every snapshot replaces the previous one — small, cheap.
+// We also kick off an in-app backup snapshot (max 2 rotating, one per day).
 function persist(db: DB) {
   void saveDB(db);
+  void saveBackupSnapshot(db);
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -519,5 +528,15 @@ export const useStore = create<StoreState>((set, get) => ({
     await clearDB();
     await saveDB(fresh);
     set({ db: fresh });
+  },
+
+  restoreFromBackup: (data) => {
+    set((s) => {
+      // Trust the incoming data — if schemaVersion mismatches, importJSON would have caught it.
+      // For restore-from-backup we assume the backup is a valid prior state from the same app.
+      const next = { ...s.db, ...data };
+      persist(next);
+      return { db: next };
+    });
   },
 }));

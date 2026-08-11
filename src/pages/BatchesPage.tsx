@@ -139,15 +139,17 @@ export function BatchesPage() {
   );
 }
 
-function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (input: { name: string; daysOfWeek: number[]; startTime: string; endTime: string; location?: string }) => void }) {
+function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (input: { name: string; daysOfWeek: number[]; startTime: string; endTime: string; location?: string; costPerClass?: number }) => void }) {
   const [name, setName] = useState('');
   const [days, setDays] = useState<number[]>([]);
   const [start, setStart] = useState('16:00');
   const [end, setEnd] = useState('17:00');
   const [location, setLocation] = useState('');
+  const [cost, setCost] = useState<string>('');
 
   if (!open) return null;
-  const reset = () => { setName(''); setDays([]); setStart('16:00'); setEnd('17:00'); setLocation(''); };
+  const reset = () => { setName(''); setDays([]); setStart('16:00'); setEnd('17:00'); setLocation(''); setCost(''); };
+  const costNum = parseFloat(cost);
 
   return (
     <Modal open onClose={() => { reset(); onClose(); }} title="New batch">
@@ -186,10 +188,28 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
           <Label>Location (optional)</Label>
           <TextInput value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Cubbon Park ramp" />
         </div>
+        <div>
+          <Label>Cost per class (optional)</Label>
+          <div className="flex items-center gap-2">
+            <span className="text-fg-muted">₹</span>
+            <TextInput
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step="1"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              placeholder="0"
+              className="!py-2"
+            />
+            <span className="text-xs text-fg-muted whitespace-nowrap">per class</span>
+          </div>
+          <p className="text-[11px] text-fg-muted mt-1.5">Leave 0 or blank if you don't charge for this batch.</p>
+        </div>
         <div className="flex gap-2 pt-2">
           <Button variant="ghost" onClick={() => { reset(); onClose(); }} className="flex-1">Cancel</Button>
           <Button
-            disabled={!name.trim() || days.length === 0}
+            disabled={!name.trim() || days.length === 0 || (cost.trim() !== '' && (!Number.isFinite(costNum) || costNum < 0))}
             onClick={() => {
               onCreate({
                 name: name.trim(),
@@ -197,6 +217,7 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
                 startTime: start,
                 endTime: end,
                 location: location.trim() || undefined,
+                costPerClass: cost.trim() === '' ? 0 : costNum,
               });
               reset();
             }}
@@ -210,13 +231,15 @@ function CreateBatchModal({ open, onClose, onCreate }: { open: boolean; onClose:
   );
 }
 
-function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; onClose: () => void; onSave: (patch: { name: string; daysOfWeek: number[]; startTime: string; endTime: string; location?: string }) => void }) {
+function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; onClose: () => void; onSave: (patch: { name: string; daysOfWeek: number[]; startTime: string; endTime: string; location?: string; costPerClass: number }) => void }) {
   const batch = useStore((s) => s.db.batches.find((b) => b.id === batchId));
   const [name, setName] = useState(batch?.name ?? '');
   const [days, setDays] = useState<number[]>(batch?.daysOfWeek ?? []);
   const [start, setStart] = useState(batch?.startTime ?? '16:00');
   const [end, setEnd] = useState(batch?.endTime ?? '17:00');
   const [location, setLocation] = useState(batch?.location ?? '');
+  const [cost, setCost] = useState<string>(batch?.costPerClass ? String(batch.costPerClass) : '');
+  const costNum = parseFloat(cost);
 
   if (!batchId || !batch) return null;
 
@@ -251,11 +274,29 @@ function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; 
           <Label>Location</Label>
           <TextInput value={location} onChange={(e) => setLocation(e.target.value)} />
         </div>
+        <div>
+          <Label>Cost per class</Label>
+          <div className="flex items-center gap-2">
+            <span className="text-fg-muted">₹</span>
+            <TextInput
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step="1"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              placeholder="0"
+              className="!py-2"
+            />
+            <span className="text-xs text-fg-muted whitespace-nowrap">per class</span>
+          </div>
+          <p className="text-[11px] text-fg-muted mt-1.5">Leave 0 or blank if you don't charge for this batch.</p>
+        </div>
         <div className="flex gap-2 pt-2">
           <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
           <Button
-            disabled={!name.trim() || days.length === 0}
-            onClick={() => onSave({ name: name.trim(), daysOfWeek: days, startTime: start, endTime: end, location: location.trim() || undefined })}
+            disabled={!name.trim() || days.length === 0 || (cost.trim() !== '' && (!Number.isFinite(costNum) || costNum < 0))}
+            onClick={() => onSave({ name: name.trim(), daysOfWeek: days, startTime: start, endTime: end, location: location.trim() || undefined, costPerClass: cost.trim() === '' ? 0 : costNum })}
             className="flex-1"
           >
             Save
