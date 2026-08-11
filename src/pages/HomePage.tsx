@@ -76,6 +76,48 @@ export function HomePage() {
     return map;
   }, [sessions, attendance, today, activeBatches]);
 
+  // Adhoc classes done this month — count of distinct (batch, date) pairs this month where:
+  //   - session date is NOT in the batch's normal `daysOfWeek` (i.e., reschedule or extra class)
+  //   - at least one attendance row with status='present' exists for that session
+  //   - session is not cancelled
+  // This is the cross-batch total Joseph wants visible at a glance. Mirrors the same
+  // present-only rule as `classesDoneByBatch` so we don't count tap-through accidents.
+  const adhocCount = useMemo(() => {
+    const ym = today.slice(0, 7); // "YYYY-MM"
+    const monthStart = `${ym}-01`;
+    const [yy, mm] = ym.split('-').map(Number);
+    const monthEnd = `${ym}-${String(new Date(yy, mm, 0).getDate()).padStart(2, '0')}`;
+
+    const sessionMeta = new Map<string, { batchId: string; date: string; status: string }>();
+    for (const s of sessions) {
+      sessionMeta.set(s.id, { batchId: s.batchId, date: s.date, status: s.status });
+    }
+
+    // batchId -> Set of dates with at least one 'present' attendance this month on a non-batch-day
+    const datesByBatch = new Map<string, Set<string>>();
+    for (const att of attendance) {
+      if (att.status !== 'present') continue;
+      const meta = sessionMeta.get(att.sessionId);
+      if (!meta) continue;
+      if (meta.date < monthStart || meta.date > monthEnd) continue;
+      if (meta.status === 'cancelled') continue;
+      const batch = batches.find((b) => b.id === meta.batchId);
+      if (!batch) continue;
+      const dayOfWeek = parseISODate(meta.date).getDay();
+      if (batch.daysOfWeek.includes(dayOfWeek)) continue; // skip normal class days — only count adhoc
+      let set = datesByBatch.get(meta.batchId);
+      if (!set) {
+        set = new Set<string>();
+        datesByBatch.set(meta.batchId, set);
+      }
+      set.add(meta.date);
+    }
+
+    let total = 0;
+    for (const set of datesByBatch.values()) total += set.size;
+    return total;
+  }, [sessions, attendance, today, batches]);
+
   // Today's students widget — groups today's batches by (startTime, endTime) and shows
   // the union of students who have class at each time slot. If two batches share the same
   // day+time, their rosters merge into one list. If no batch runs today, the widget is hidden.
@@ -159,6 +201,19 @@ export function HomePage() {
                 <div className="text-[10px] text-fg-muted uppercase tracking-wider mt-1 truncate">{b.name}</div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Adhoc classes · this month — counts reschedules + extra classes (any session on a day
+          that's NOT in the batch's normal `daysOfWeek`) where at least one student was present.
+          Hidden when zero, so the Home screen stays clean until Joseph has actually used it. */}
+      {adhocCount > 0 && (
+        <div className="mb-6">
+          <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted mb-3">Adhoc classes · this month</h2>
+          <div className="bg-bg-card border border-neon-orange/40 rounded-2xl p-3 text-center">
+            <div className="text-2xl font-extrabold neon-text-orange">{adhocCount}</div>
+            <div className="text-[10px] text-fg-muted uppercase tracking-wider mt-1">Reschedules + extra classes</div>
           </div>
         </div>
       )}

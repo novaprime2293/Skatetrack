@@ -161,13 +161,14 @@ export function MonthlyCalendar() {
   const handleCellTap = (studentId: string, studentName: string, date: string, cell: DayCell) => {
     // Case A: no real session on this day.
     if (cell.sessions.length === 0) {
-      // Find batches that SHOULD run on this day (so we can offer adhoc attendance).
-      const dayOfWeek = parseISODate(date).getDay();
+      // No session on this day — offer to record an ad-hoc class against ANY of the student's
+      // active batches, regardless of whether this day is a normal batch day. Tap-to-mark adhoc
+      // works for reschedules (different day) AND for adding an extra class on a non-batch day.
+      // studentRows already filters to students with at least one active batch, so the row exists.
       const adhocCandidates = studentRows
         .find((r) => r.id === studentId)
-        ?.batches.filter((b) => b.daysOfWeek.includes(dayOfWeek))
-        .map((b) => ({ batchId: b.id, batchName: b.name, sessionId: null, existing: null as null })) ?? [];
-      if (adhocCandidates.length === 0) return; // truly nothing to mark — don't open a picker
+        ?.batches.map((b) => ({ batchId: b.id, batchName: b.name, sessionId: null, existing: null as null })) ?? [];
+      if (adhocCandidates.length === 0) return; // student has no active batches — shouldn't happen (studentRows filters them out)
       if (adhocCandidates.length === 1) {
         setPickerFor({
           stage: 'pickStatus',
