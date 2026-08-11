@@ -13,7 +13,7 @@ function monthKey(year: number, monthIdx: number): string {
   return `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
 }
 function formatINR(n: number): string {
-  return `\u20b9${Math.round(n).toLocaleString('en-IN')}`;
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
 /**
@@ -160,7 +160,7 @@ export function PaymentsPage() {
 
   return (
     <div className="px-4 pb-12">
-      <PageHeader title="Payments" subtitle="What each student owes \u00b7 what you've collected" />
+      <PageHeader title="Payments" subtitle="What each student owes · what you've collected" />
 
       {/* Month selector */}
       <Card className="mb-4 !p-3">
@@ -170,7 +170,7 @@ export function PaymentsPage() {
             aria-label="Previous month"
             className="w-9 h-9 rounded-full bg-bg-card border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
           >
-            \u2039
+            ‹
           </button>
           <div className="flex-1 text-center">
             <div className="text-base font-semibold">{monthLabel}</div>
@@ -180,7 +180,7 @@ export function PaymentsPage() {
             aria-label="Next month"
             className="w-9 h-9 rounded-full bg-bg-card border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
           >
-            \u203a
+            ›
           </button>
         </div>
         <div className="mt-2 flex justify-center">
@@ -232,7 +232,7 @@ export function PaymentsPage() {
 
       {activeStudents.length === 0 ? (
         <EmptyState
-          icon={<span className="text-3xl">\ud83d\udcb0</span>}
+          icon={<span className="text-3xl">💰</span>}
           title="No active students"
           body="Add students from the Students tab to start tracking payments."
         />
@@ -372,8 +372,8 @@ function PaymentRow({
             {perBatch.length === 0
               ? 'No batch charges this month'
               : perBatch
-                  .map((pb) => `${pb.batchName}: ${pb.classesAttended}\u00d7 ${formatINR(pb.costPerClass)}`)
-                  .join(' \u00b7 ')}
+                  .map((pb) => `${pb.batchName}: ${pb.classesAttended}× ${formatINR(pb.costPerClass)}`)
+                  .join(' · ')}
           </div>
         </div>
         <div className="text-right whitespace-nowrap">
@@ -412,10 +412,10 @@ function PaymentRow({
         <div className="space-y-2 mt-2 pt-2 border-t border-border">
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-fg-muted font-bold mb-1">
-              Amount paid (\u20b9)
+              Amount paid (₹)
             </label>
             <div className="flex items-center gap-2">
-              <span className="text-fg-muted">\u20b9</span>
+              <span className="text-fg-muted">₹</span>
               <input
                 type="number"
                 inputMode="numeric"
@@ -465,7 +465,7 @@ function PaymentRow({
               )}
               <div className="flex-1 flex flex-col gap-1.5">
                 <label className="cursor-pointer bg-bg-card border border-border rounded-xl px-3 py-2 text-sm text-center hover:bg-bg-card-hover">
-                  {busy ? 'Compressing\u2026' : screenshot ? 'Replace screenshot' : 'Attach screenshot'}
+                  {busy ? 'Compressing…' : screenshot ? 'Replace screenshot' : 'Attach screenshot'}
                   <input
                     ref={fileInputRef}
                     type="file"
