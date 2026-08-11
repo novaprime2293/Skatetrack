@@ -119,45 +119,48 @@ export async function loadDB(): Promise<DB | null> {
     // This is idempotent and runs on every load; after the first run with no duplicates,
     // it's a no-op. Logs once if anything was actually merged.
     if (Array.isArray(stored.sessions)) {
-      const seen = new Map<string, Session>();
-      const merged: Session[] = [];
-      let dupCount = 0;
+      // Group by (batchId, date, type) and pick the canonical session per group.
+      // Canonical = the one with the most attendance records; ties broken by id.
+      const groups = new Map<string, Session[]>();
       for (const sess of stored.sessions) {
         const key = `${sess.batchId}|${sess.date}|${sess.type}`;
-        const existing = seen.get(key);
-        if (existing) {
-          // Prefer the kept session that actually has attendance. If neither has attendance,
-          // keep whichever was created first (alphabetical id).
-          const existingAtt = (stored.attendance ?? []).filter((a) => a.sessionId === existing.id).length;
-          const sessAtt = (stored.attendance ?? []).filter((a) => a.sessionId === sess.id).length;
-          let kept = existing;
-          let dropped = sess;
-          if (sessAtt > existingAtt) {
-            kept = sess;
-            dropped = existing;
-            // Replace the entry in `seen` so subsequent dupes re-merge against the new kept.
-            seen.set(key, kept);
-          }
-          // Reassign attendance records from the dropped session to the kept one.
-          if (Array.isArray(stored.attendance)) {
-            for (const a of stored.attendance) {
-              if (a.sessionId === dropped.id) a.sessionId = kept.id;
+        const group = groups.get(key);
+        if (group) group.push(sess);
+        else groups.set(key, [sess]);
+      }
+      const droppedIds = new Set<string>();
+      const sessionMap = new Map<string, string>(); // droppedId -> keptId
+      let dupCount = 0;
+      for (const [, group] of groups) {
+        if (group.length === 1) continue;
+        const attCount = (s: Session) =>
+          (stored.attendance ?? []).filter((a) => a.sessionId === s.id).length;
+        const sorted = [...group].sort((a, b) => attCount(b) - attCount(a) || a.id.localeCompare(b.id));
+        const kept = sorted[0];
+        // Upgrade kept's status to attendance_marked if any duplicate was marked.
+        if (kept.status === 'scheduled') {
+          for (const d of sorted.slice(1)) {
+            if (d.status === 'attendance_marked') {
+              kept.status = 'attendance_marked';
+              break;
             }
           }
-          // Also: if the kept session is still 'scheduled' but the dropped session was
-          // 'attendance_marked', upgrade the kept one's status so the grid reflects reality.
-          if (kept.status === 'scheduled' && dropped.status === 'attendance_marked') {
-            kept.status = 'attendance_marked';
-          }
+        }
+        for (const d of sorted.slice(1)) {
+          droppedIds.add(d.id);
+          sessionMap.set(d.id, kept.id);
           dupCount++;
-        } else {
-          seen.set(key, sess);
-          merged.push(sess);
         }
       }
       if (dupCount > 0) {
         console.info(`Skatetrack: merged ${dupCount} duplicate session(s)`);
-        stored.sessions = merged;
+        stored.sessions = stored.sessions.filter((s) => !droppedIds.has(s.id));
+        if (Array.isArray(stored.attendance)) {
+          for (const a of stored.attendance) {
+            const mapped = sessionMap.get(a.sessionId);
+            if (mapped) a.sessionId = mapped;
+          }
+        }
       }
     }
     return stored;
