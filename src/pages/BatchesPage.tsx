@@ -333,7 +333,7 @@ function EditBatchModal({ batchId, onClose, onSave }: { batchId: string | null; 
       dt[d] = { startTime: entry?.startTime ?? batch.startTime, endTime: entry?.endTime ?? batch.endTime };
     }
     setDayTimes(dt);
-  }, [batch?.id, batch?.name, batch?.daysOfWeek.join(','), batch?.startTime, batch?.endTime, batch?.dayTimes ? JSON.stringify(batch.dayTimes) : '', batch?.location, batch?.costPerClass]);
+  }, [batch]);
 
   const costNum = parseFloat(cost);
 
