@@ -30,26 +30,33 @@ export function HomePage() {
     return count;
   }, [activeBatches, sessions, today]);
 
-  // Classes done this month, per batch. Each batch counts its own classes independently:
-  // recurring sessions for that batch whose endTime has passed (excluding cancelled) +
-  // one-off sessions for that batch this month. Overlapping dates count once per batch.
+  // Classes done this month, per batch. Rule (Joseph, 2026-08-11):
+  //   1. One class per (batchId, date). Distinct past dates only.
+  //   2. Config-based, not data-based: scheduled days (batch.daysOfWeek) that have passed
+  //      count even if attendance was never marked.
+  //   3. One-off sessions for the batch also count on top of the schedule.
+  //   4. Cancelled sessions don't count.
+  //   5. Each batch has its own counter — a shared day across two batches counts once per batch.
+  // Uses findOrCreateRecurringSessions to generate virtual recurring sessions for any
+  // scheduled date in the month that doesn't have a real one in the store. Dedupes by
+  // collecting into a Set<string> of dates.
   const classesDoneByBatch = useMemo(() => {
     const now = new Date();
+    const ym = today.slice(0, 7); // "YYYY-MM"
+    const monthStart = `${ym}-01`;
+    // Compute last day of the current month using local Date math.
+    const [yy, mm] = ym.split('-').map(Number);
+    const monthEnd = `${ym}-${String(new Date(yy, mm, 0).getDate()).padStart(2, '0')}`;
     const map = new Map<string, number>();
     for (const batch of activeBatches) {
-      let count = 0;
-      for (const sess of sessions) {
-        if (sess.batchId !== batch.id) continue;
-        if (!sess.date.startsWith(today.slice(0, 7))) continue;
-        if (sess.type === 'one-off') {
-          count++;
-          continue;
-        }
-        if (sess.type === 'recurring' && sess.status !== 'cancelled' && sessionEnded(sess, now)) {
-          count++;
-        }
+      const dateSet = new Set<string>();
+      const all = findOrCreateRecurringSessions(batch, sessions, monthStart, monthEnd);
+      for (const s of all) {
+        if (s.status === 'cancelled') continue;
+        if (!sessionEnded(s, now)) continue;
+        dateSet.add(s.date);
       }
-      map.set(batch.id, count);
+      map.set(batch.id, dateSet.size);
     }
     return map;
   }, [sessions, today, activeBatches]);
