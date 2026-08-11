@@ -5,7 +5,7 @@
 // for users (e.g., a fix that the stale SW would otherwise keep serving). Old caches are
 // deleted by the activate handler below.
 
-const CACHE = 'skatetrack-v17';
+const CACHE = 'skatetrack-v18';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -25,6 +25,24 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  const isHtml = req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
+  // Network-first for HTML so users always pick up the latest app shell (and the asset hash refs
+  // inside it). Fall back to cached index.html when offline so the PWA still boots.
+  if (isHtml) {
+    event.respondWith(
+      fetch(req).then((res) => {
+        if (res && res.status === 200) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put('/', copy)).catch(() => {});
+        }
+        return res;
+      }).catch(() => caches.match('/'))
+    );
+    return;
+  }
+  // Cache-first for hashed assets (their URL changes when the bundle changes, so stale entries
+  // get orphaned naturally and the new hash is fetched from network).
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
