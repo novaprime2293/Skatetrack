@@ -102,11 +102,20 @@ export function PaymentsPage() {
     return map;
   }, [sessions, from, to]);
 
-  // Per-student row: owed amount + saved payment (if any)
+  // Per-student row: owed amount + saved payment (if any).
+  // Only COUNT batches the student is CURRENTLY enrolled in (removedDate === null) AND
+  // whose joinedDate is on/before the end of the viewing month. Otherwise a historical
+  // "removed" membership would still be charged — Joseph reported this on 2026-08-11:
+  // Subrith was once in 2 batches but is now in 1, and the math was summing both.
   const rows = useMemo(() => {
     return activeStudents
       .map((student) => {
-        const studentMemberships = memberships.filter((m) => m.studentId === student.id);
+        const studentMemberships = memberships.filter(
+          (m) =>
+            m.studentId === student.id &&
+            m.removedDate === null &&
+            m.joinedDate <= to
+        );
         const batchesForStudent = new Map<string, typeof batches[number]>();
         for (const m of studentMemberships) {
           if (batchFilter && m.batchId !== batchFilter) continue;
