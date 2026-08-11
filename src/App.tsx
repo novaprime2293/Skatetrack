@@ -11,6 +11,7 @@ import { AttendanceFlowPage } from './pages/AttendanceFlowPage';
 import { MissedAttendanceModal } from './components/MissedAttendanceModal';
 import { SettingsPage } from './pages/SettingsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import { DebugPage } from './pages/DebugPage';
 import { scanAndNotify, clearAllNotified } from './data/notifications';
 
 export function App() {
@@ -75,6 +76,7 @@ export function App() {
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/attendance/:sessionId" element={<AttendanceFlowPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/debug" element={<DebugPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

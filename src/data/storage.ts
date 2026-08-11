@@ -162,45 +162,6 @@ export async function loadDB(): Promise<DB | null> {
         console.info(`Skatetrack: reverted ${reverted} session(s) dragged across month boundaries by earlier TZ migration`);
       }
     }
-    // One-time Aug 1 / Aug 2 weekend cleanup (2026-08-11): Joseph confirmed stray 'present'
-    // rows on past weekend dates (probably Aug 1, possibly Aug 2) for the weekend batch —
-    // most likely from accidental taps in the new MonthlyCalendar (v10–v12) picker that
-    // committed before he could back out. The v9 'present-only counts' rule was correctly
-    // counting those rows as a class day, so the counter went up by one.
-    //
-    // Match all sessions whose date falls on Aug 1 or Aug 2, 2026 AND whose batch has
-    // Saturday (6) OR Sunday (0) in daysOfWeek — the weekend-batch pattern. Lenient date
-    // parsing handles both padded ('2026-08-01') and unpadded ('2026-08-1') formats.
-    // Remove every attendance row for that session. Revert session status to 'scheduled'
-    // so the cell renders as unmarked and the session isn't left in an orphaned
-    // 'attendance_marked' state. Idempotent.
-    if (Array.isArray(stored.sessions) && Array.isArray(stored.attendance) && Array.isArray(stored.batches)) {
-      const isAug1or2 = (iso: string) => {
-        const parts = iso.split('-').map(Number);
-        if (parts.length !== 3) return false;
-        const [y, m, d] = parts;
-        return y === 2026 && m === 8 && (d === 1 || d === 2);
-      };
-      const targetSessions = new Set<string>();
-      const matchedDates: string[] = [];
-      for (const sess of stored.sessions) {
-        if (!isAug1or2(sess.date)) continue;
-        const batch = stored.batches.find((b) => b.id === sess.batchId);
-        if (!batch) continue;
-        if (!batch.daysOfWeek.includes(6) && !batch.daysOfWeek.includes(0)) continue;
-        targetSessions.add(sess.id);
-        matchedDates.push(`${sess.date} (batch ${batch.name})`);
-        if (sess.status === 'attendance_marked') sess.status = 'scheduled';
-      }
-      if (targetSessions.size > 0) {
-        const before = stored.attendance.length;
-        stored.attendance = stored.attendance.filter((a) => !targetSessions.has(a.sessionId));
-        const removed = before - stored.attendance.length;
-        console.info(`Skatetrack: removed ${removed} stray attendance row(s) from ${targetSessions.size} session(s) on Aug 1/Aug 2 weekend batches: ${matchedDates.join(', ')}`);
-      } else {
-        console.info('Skatetrack: Aug 1/Aug 2 weekend cleanup scanned — no matching sessions found');
-      }
-    }
     // Deduplicate sessions — for each (batchId, date, type), keep one canonical session
     // and reassign any attendance records pointing at the duplicates to the kept session.
     // This is idempotent and runs on every load; after the first run with no duplicates,
