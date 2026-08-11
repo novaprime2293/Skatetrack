@@ -13,6 +13,7 @@ export function HomePage() {
   const students = useStore((s) => s.db.students);
   const memberships = useStore((s) => s.db.memberships);
   const sessions = useStore((s) => s.db.sessions);
+  const attendance = useStore((s) => s.db.attendance);
 
   const today = todayISO();
   const activeBatches = batches.filter((b) => !b.archivedAt);
@@ -30,36 +31,49 @@ export function HomePage() {
     return count;
   }, [activeBatches, sessions, today]);
 
-  // Classes done this month, per batch. Rule (Joseph, 2026-08-11):
-  //   1. One class per (batchId, date). Distinct past dates only.
-  //   2. Config-based, not data-based: scheduled days (batch.daysOfWeek) that have passed
-  //      count even if attendance was never marked.
-  //   3. One-off sessions for the batch also count on top of the schedule.
-  //   4. Cancelled sessions don't count.
-  //   5. Each batch has its own counter — a shared day across two batches counts once per batch.
-  // Uses findOrCreateRecurringSessions to generate virtual recurring sessions for any
-  // scheduled date in the month that doesn't have a real one in the store. Dedupes by
-  // collecting into a Set<string> of dates.
+  // Classes done this month, per batch. Rule (Joseph, 2026-08-11, revised):
+  //   1. Count = number of distinct dates this month where attendance was actually marked
+  //      for the batch. Schedule is ignored; attendance records are the source of truth.
+  //   2. A day is "done" for a batch if at least one attendance row exists for that batch
+  //      on that date. Recurring + one-off sessions both qualify.
+  //   3. Per-batch counter. A date with attendance for batch A only counts for A, not for B.
+  //      This correctly handles cases where one batch ran on a shared scheduled day and the
+  //      other did not (e.g. rain day, cancellation).
+  //   4. Cancelled sessions are excluded (stale attendance on a cancelled session shouldn't
+  //      count).
   const classesDoneByBatch = useMemo(() => {
-    const now = new Date();
     const ym = today.slice(0, 7); // "YYYY-MM"
     const monthStart = `${ym}-01`;
-    // Compute last day of the current month using local Date math.
     const [yy, mm] = ym.split('-').map(Number);
     const monthEnd = `${ym}-${String(new Date(yy, mm, 0).getDate()).padStart(2, '0')}`;
+
+    // sessionId -> { batchId, date, status }
+    const sessionMeta = new Map<string, { batchId: string; date: string; status: string }>();
+    for (const s of sessions) {
+      sessionMeta.set(s.id, { batchId: s.batchId, date: s.date, status: s.status });
+    }
+
+    // batchId -> Set of dates with attendance this month
+    const datesByBatch = new Map<string, Set<string>>();
+    for (const att of attendance) {
+      const meta = sessionMeta.get(att.sessionId);
+      if (!meta) continue;
+      if (meta.date < monthStart || meta.date > monthEnd) continue;
+      if (meta.status === 'cancelled') continue;
+      let set = datesByBatch.get(meta.batchId);
+      if (!set) {
+        set = new Set<string>();
+        datesByBatch.set(meta.batchId, set);
+      }
+      set.add(meta.date);
+    }
+
     const map = new Map<string, number>();
     for (const batch of activeBatches) {
-      const dateSet = new Set<string>();
-      const all = findOrCreateRecurringSessions(batch, sessions, monthStart, monthEnd);
-      for (const s of all) {
-        if (s.status === 'cancelled') continue;
-        if (!sessionEnded(s, now)) continue;
-        dateSet.add(s.date);
-      }
-      map.set(batch.id, dateSet.size);
+      map.set(batch.id, datesByBatch.get(batch.id)?.size ?? 0);
     }
     return map;
-  }, [sessions, today, activeBatches]);
+  }, [sessions, attendance, today, activeBatches]);
 
   // Today's students widget — groups today's batches by (startTime, endTime) and shows
   // the union of students who have class at each time slot. If two batches share the same
