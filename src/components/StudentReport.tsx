@@ -11,7 +11,7 @@ function endOfMonth(year: number, monthIdx: number): string {
   return `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 }
 function formatINR(n: number): string {
-  return `\u20b9${Math.round(n).toLocaleString('en-IN')}`;
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 function formatDate(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
@@ -143,7 +143,7 @@ export function StudentReport({
       {/* Header */}
       <div style={{ borderBottom: '2px solid #39ff14', paddingBottom: '16px', marginBottom: '24px' }}>
         <div style={{ fontSize: '14px', letterSpacing: '2px', fontWeight: 700, color: '#39ff14', textTransform: 'uppercase' }}>
-          \u26f1\ufe0f SkateTrack Report
+          ⛱️ SkateTrack Report
         </div>
         <div style={{ fontSize: '11px', color: '#888', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>
           Monthly attendance & payments
@@ -182,7 +182,7 @@ export function StudentReport({
             <div style={{ fontSize: '12px', lineHeight: 1.6, color: '#39ff14' }}>
               {breakdown.datesPresent.map((d) => (
                 <span key={d.date + d.batchName} style={{ display: 'inline-block', marginRight: '10px' }}>
-                  \u2713 {formatDate(d.date)}
+                  ✓ {formatDate(d.date)}
                   <span style={{ color: '#666', fontSize: '11px' }}> ({d.batchName})</span>
                 </span>
               ))}
@@ -196,7 +196,7 @@ export function StudentReport({
             <div style={{ fontSize: '12px', lineHeight: 1.6, color: '#ff2e93' }}>
               {breakdown.datesAbsent.map((d) => (
                 <span key={d.date + d.batchName} style={{ display: 'inline-block', marginRight: '10px' }}>
-                  \u2717 {formatDate(d.date)}
+                  ✗ {formatDate(d.date)}
                   <span style={{ color: '#666', fontSize: '11px' }}> ({d.batchName})</span>
                 </span>
               ))}
@@ -230,11 +230,11 @@ export function StudentReport({
                 <div>
                   <div style={{ fontWeight: 600 }}>{pb.batchName}</div>
                   <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
-                    {pb.classesAttended} class{pb.classesAttended === 1 ? '' : 'es'} \u00d7 {formatINR(pb.costPerClass)}
+                    {pb.classesAttended} class{pb.classesAttended === 1 ? '' : 'es'} × {formatINR(pb.costPerClass)}
                   </div>
                 </div>
                 <div style={{ fontWeight: 700, color: pb.costPerClass > 0 ? '#00f0ff' : '#666' }}>
-                  {pb.costPerClass > 0 ? formatINR(pb.total) : '\u2014'}
+                  {pb.costPerClass > 0 ? formatINR(pb.total) : '—'}
                 </div>
               </div>
             ))}
@@ -278,7 +278,7 @@ export function StudentReport({
                     color: payment ? '#39ff14' : '#ff2e93',
                   }}
                 >
-                  {payment ? '\u2713 Payment recorded' : '\u26a0 No payment recorded'}
+                  {payment ? '✓ Payment recorded' : '⚠ No payment recorded'}
                 </div>
                 {payment?.note && (
                   <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px', fontStyle: 'italic' }}>
@@ -315,7 +315,7 @@ export function StudentReport({
 
       {/* Footer */}
       <div style={{ borderTop: '1px solid #333', paddingTop: '12px', fontSize: '10px', color: '#666', textAlign: 'center' }}>
-        Generated {generatedAt} \u00b7 SkateTrack
+        Generated {generatedAt} · SkateTrack
       </div>
     </div>
   );
@@ -403,7 +403,7 @@ export function DownloadReportModal({
       {/* Hidden report node for html2canvas to capture. Always mounted while modal is open. */}
       <StudentReport studentId={studentId} monthLabel={monthLabel} from={from} to={to} />
 
-      <Modal open onClose={onClose} title={`Download report \u2014 ${studentName}`}>
+      <Modal open onClose={onClose} title={`Download report — ${studentName}`}>
         <div className="space-y-4">
           <p className="text-sm text-fg-secondary">
             Saves a PNG image with {studentName}'s attendance dates and payment due for the selected month. Good for sharing with parents or your own records.
@@ -416,7 +416,7 @@ export function DownloadReportModal({
               aria-label="Previous month"
               className="w-8 h-8 rounded-full bg-bg-base border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
             >
-              \u2039
+              ‹
             </button>
             <div className="flex-1 text-center">
               <div className="text-sm font-semibold">{monthLabel}</div>
@@ -426,14 +426,14 @@ export function DownloadReportModal({
               aria-label="Next month"
               className="w-8 h-8 rounded-full bg-bg-base border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
             >
-              \u203a
+              ›
             </button>
           </div>
 
           {error && <div className="text-sm text-neon-pink">{error}</div>}
 
           <Button onClick={handleDownload} disabled={busy} className="w-full !py-3">
-            {busy ? 'Generating image\u2026' : `\ud83d\udcf7 Download ${monthLabel} PNG`}
+            {busy ? 'Generating image…' : `📷 Download ${monthLabel} PNG`}
           </Button>
 
           <Button variant="ghost" onClick={onClose} className="w-full">Close</Button>
@@ -603,9 +603,9 @@ function CalendarGrid({
                   : '#0a0a0a';
               const label =
                 cell.status === 'present'
-                  ? '\u2713'
+                  ? '✓'
                   : cell.status === 'absent'
-                  ? '\u2717'
+                  ? '✗'
                   : String(cell.day);
               const labelColor =
                 cell.status === 'present' || cell.status === 'absent' ? '#0a0a0a' : '#aaa';
@@ -626,7 +626,7 @@ function CalendarGrid({
                     fontWeight: 700,
                     color: labelColor,
                   }}
-                  title={`${cell.date} \u00b7 ${cell.status === 'present' ? 'Present' : cell.status === 'absent' ? 'Absent' : cell.isClassDay ? 'Class day (unmarked)' : 'No class'}`}
+                  title={`${cell.date} · ${cell.status === 'present' ? 'Present' : cell.status === 'absent' ? 'Absent' : cell.isClassDay ? 'Class day (unmarked)' : 'No class'}`}
                 >
                   {label}
                 </div>

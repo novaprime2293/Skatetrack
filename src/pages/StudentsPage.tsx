@@ -866,10 +866,10 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
 }
 
 /**
- * "All attendance records" modal \u2014 shows every attendance record for a single student across all
+ * "All attendance records" modal — shows every attendance record for a single student across all
  * batches (including archived / historical batches the student was later removed from). Used for
  * cleanup: the teacher can review and delete individual records here. The per-batch calendar in
- * StudentDetail intentionally has no delete button \u2014 cleanup happens in this view only.
+ * StudentDetail intentionally has no delete button — cleanup happens in this view only.
  */
 function AllAttendanceModal({
   open,
@@ -943,7 +943,7 @@ function AllAttendanceModal({
   if (!open) return null;
 
   return (
-    <Modal open onClose={onClose} title={`All attendance \u2014 ${studentName}`}>
+    <Modal open onClose={onClose} title={`All attendance — ${studentName}`}>
       <div className="space-y-4">
         {/* Month selector */}
         <div className="flex items-center justify-between gap-3 bg-bg-card border border-border rounded-xl p-3">
@@ -952,7 +952,7 @@ function AllAttendanceModal({
             aria-label="Previous month"
             className="w-8 h-8 rounded-full bg-bg-base border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
           >
-            \u2039
+            ‹
           </button>
           <div className="flex-1 text-center">
             <div className="text-sm font-semibold">{monthLabel}</div>
@@ -962,7 +962,7 @@ function AllAttendanceModal({
             aria-label="Next month"
             className="w-8 h-8 rounded-full bg-bg-base border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
           >
-            \u203a
+            ›
           </button>
         </div>
 
@@ -988,7 +988,7 @@ function AllAttendanceModal({
               >
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">
-                    {formatISODate(r.date)} \u00b7 <span className="text-fg-secondary">{r.batchName}</span>
+                    {formatISODate(r.date)} · <span className="text-fg-secondary">{r.batchName}</span>
                   </div>
                   <div className="text-[10px] mt-0.5 flex items-center gap-1.5">
                     <Pill color={r.status === 'present' ? 'green' : 'pink'}>

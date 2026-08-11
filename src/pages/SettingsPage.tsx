@@ -210,7 +210,7 @@ export function SettingsPage() {
                   <div className="text-sm font-semibold">{snap.date}</div>
                   <div className="text-[10px] text-fg-muted">
                     {new Date(snap.timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                    {' \u00b7 '}
+                    {' · '}
                     {snap.data.students.length} students, {snap.data.batches.length} batches, {snap.data.attendance.length} attendance marks
                   </div>
                 </div>
@@ -225,7 +225,7 @@ export function SettingsPage() {
                         )
                       ) {
                         restoreFromBackup(snap.data);
-                        alert('Restored. Reloading\u2026');
+                        alert('Restored. Reloading…');
                         window.location.reload();
                       }
                     }}

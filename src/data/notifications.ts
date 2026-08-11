@@ -100,7 +100,7 @@ export function scanAndNotify(
 
     const batchName = batchNameById.get(sess.batchId) ?? 'your batch';
     const firedOk = fireNotification(
-      `\ud83d\udccb Mark attendance \u2014 ${batchName}`,
+      `📋 Mark attendance — ${batchName}`,
       `Class ended at ${sess.endTime}. Open SkateTrack to swipe cards.`
     );
     if (firedOk) {
