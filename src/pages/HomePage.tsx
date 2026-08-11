@@ -51,25 +51,29 @@ export function HomePage() {
     return count;
   }, [activeBatches, sessions, today]);
 
-  // Classes done this month = recurring sessions whose endTime < now (excluding cancelled) +
-  // all one-off sessions this month regardless of status. PRD §4.6.
-  const classesDone = useMemo(() => {
+  // Classes done this month, per batch. Each batch counts its own classes independently:
+  // recurring sessions for that batch whose endTime has passed (excluding cancelled) +
+  // one-off sessions for that batch this month. Overlapping dates count once per batch.
+  const classesDoneByBatch = useMemo(() => {
     const now = new Date();
-    const monthStartStr = today.slice(0, 7) + '-01';
-    let count = 0;
-    for (const sess of sessions) {
-      if (!sess.date.startsWith(today.slice(0, 7))) continue; // this month
-      if (sess.type === 'one-off') {
-        count++;
-        continue;
+    const map = new Map<string, number>();
+    for (const batch of activeBatches) {
+      let count = 0;
+      for (const sess of sessions) {
+        if (sess.batchId !== batch.id) continue;
+        if (!sess.date.startsWith(today.slice(0, 7))) continue;
+        if (sess.type === 'one-off') {
+          count++;
+          continue;
+        }
+        if (sess.type === 'recurring' && sess.status !== 'cancelled' && sessionEnded(sess, now)) {
+          count++;
+        }
       }
-      if (sess.type === 'recurring' && sess.status !== 'cancelled' && sessionEnded(sess, now)) {
-        count++;
-      }
+      map.set(batch.id, count);
     }
-    void monthStartStr;
-    return count;
-  }, [sessions, today]);
+    return map;
+  }, [sessions, today, activeBatches]);
 
   return (
     <div className="px-4 pb-12">
@@ -90,11 +94,27 @@ export function HomePage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-3 gap-2 mb-6">
+      <div className="grid grid-cols-2 gap-2 mb-6">
         <StatCard label="Students" value={activeStudents.length} />
         <StatCard label="Batches" value={activeBatches.length} />
-        <StatCard label="Classes done" value={classesDone} />
       </div>
+
+      {activeBatches.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted mb-3">Classes done · this month</h2>
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1">
+            {activeBatches.map((b) => (
+              <div
+                key={b.id}
+                className="bg-bg-card border border-border rounded-2xl p-3 min-w-[120px] flex-shrink-0 text-center"
+              >
+                <div className="text-2xl font-extrabold neon-text-green">{classesDoneByBatch.get(b.id) ?? 0}</div>
+                <div className="text-[10px] text-fg-muted uppercase tracking-wider mt-1 truncate">{b.name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <MonthlyAttendanceGrid />
 

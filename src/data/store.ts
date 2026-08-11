@@ -13,6 +13,7 @@ import type {
   BatchMembership,
   Session,
   AttendanceRecord,
+  PaymentRecord,
 } from './types';
 import { newId, nowISO, saveDB, loadDB, clearDB } from './storage';
 
@@ -30,6 +31,7 @@ function emptyDB(): DB {
     memberships: [],
     sessions: [],
     attendance: [],
+    payments: [],
   };
 }
 
@@ -76,6 +78,10 @@ interface StoreState {
    * normal setAttendance reactive update.
    */
   setAdhocAttendance: (batchId: string, studentId: string, date: string, status: 'present' | 'absent') => void;
+
+  /** Upsert a payment record for (studentId, month). Updates if exists, inserts otherwise. */
+  upsertPayment: (studentId: string, month: string, amount: number, screenshotDataUrl?: string, note?: string) => PaymentRecord;
+  deletePayment: (paymentId: string) => void;
 
   exportJSON: () => string;
   importJSON: (json: string) => Promise<{ ok: boolean; error?: string }>;
@@ -443,6 +449,50 @@ export const useStore = create<StoreState>((set, get) => ({
     }
     // 3. Write the attendance record (existing helper handles upsert + status flip).
     get().setAttendance(session.id, studentId, status);
+  },
+
+  upsertPayment: (studentId, month, amount, screenshotDataUrl, note) => {
+    let result!: PaymentRecord;
+    set((s) => {
+      const existing = s.db.payments.find((p) => p.studentId === studentId && p.month === month);
+      if (existing) {
+        result = {
+          ...existing,
+          amount,
+          screenshotDataUrl: screenshotDataUrl !== undefined ? screenshotDataUrl : existing.screenshotDataUrl,
+          note: note !== undefined ? note : existing.note,
+          updatedAt: nowISO(),
+        };
+        const next = {
+          ...s.db,
+          payments: s.db.payments.map((p) => (p.id === existing.id ? result : p)),
+        };
+        persist(next);
+        return { db: next };
+      }
+      result = {
+        id: newId(),
+        studentId,
+        month,
+        amount,
+        screenshotDataUrl,
+        note,
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+      };
+      const next = { ...s.db, payments: [...s.db.payments, result] };
+      persist(next);
+      return { db: next };
+    });
+    return result;
+  },
+
+  deletePayment: (paymentId) => {
+    set((s) => {
+      const next = { ...s.db, payments: s.db.payments.filter((p) => p.id !== paymentId) };
+      persist(next);
+      return { db: next };
+    });
   },
 
   exportJSON: () => JSON.stringify(get().db, null, 2),

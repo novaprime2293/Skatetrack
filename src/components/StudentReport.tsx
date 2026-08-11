@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../data/store';
 import { Button, Modal } from './ui';
+import type { PaymentRecord } from '../data/types';
 
 function startOfMonth(year: number, monthIdx: number): string {
   return `${year}-${String(monthIdx + 1).padStart(2, '0')}-01`;
@@ -38,8 +39,17 @@ export function StudentReport({
   const memberships = useStore((s) => s.db.memberships);
   const sessions = useStore((s) => s.db.sessions);
   const attendance = useStore((s) => s.db.attendance);
+  const payments = useStore((s) => s.db.payments);
 
   const student = students.find((s) => s.id === studentId);
+
+  const monthKey = (() => {
+    const parts = from.split('-');
+    return `${parts[0]}-${parts[1]}`;
+  })();
+  const payment: PaymentRecord | undefined = payments.find(
+    (p) => p.studentId === studentId && p.month === monthKey
+  );
 
   const breakdown = useMemo(() => {
     if (!student) return null;
@@ -242,6 +252,60 @@ export function StudentReport({
               Total owed
             </div>
             <div style={{ fontSize: '22px', fontWeight: 800, color: '#00f0ff' }}>{formatINR(breakdown.grandTotal)}</div>
+          </div>
+
+          {/* Payment status + receipt */}
+          <div
+            style={{
+              marginTop: '12px',
+              padding: '14px',
+              background: payment ? 'rgba(57, 255, 20, 0.08)' : 'rgba(255, 46, 147, 0.08)',
+              border: payment ? '1px solid rgba(57, 255, 20, 0.4)' : '1px solid rgba(255, 46, 147, 0.4)',
+              borderRadius: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div
+                  style={{
+                    fontSize: '11px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1.5px',
+                    fontWeight: 700,
+                    color: payment ? '#39ff14' : '#ff2e93',
+                  }}
+                >
+                  {payment ? '\u2713 Payment recorded' : '\u26a0 No payment recorded'}
+                </div>
+                {payment?.note && (
+                  <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px', fontStyle: 'italic' }}>
+                    "{payment.note}"
+                  </div>
+                )}
+              </div>
+              {payment && (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                    Paid
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#39ff14' }}>
+                    {formatINR(payment.amount)}
+                  </div>
+                </div>
+              )}
+            </div>
+            {payment?.screenshotDataUrl && (
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>
+                  Receipt
+                </div>
+                <img
+                  src={payment.screenshotDataUrl}
+                  alt="Payment receipt"
+                  style={{ maxWidth: '100%', maxHeight: '320px', borderRadius: '8px', border: '1px solid #333', display: 'block' }}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}

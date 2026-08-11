@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { PageHeader, Card, Button, Modal, TextInput, Label, Pill, EmptyState } from '../components/ui';
@@ -26,6 +26,29 @@ export function StudentsPage() {
   const [search, setSearch] = useState('');
   const [batchFilter, setBatchFilter] = useState<string | null>(null);
   const [pickBatchFor, setPickBatchFor] = useState<{ studentId: string; candidateBatchIds: string[] } | null>(null);
+
+  // Read ?batch=... from URL on mount and when it changes (donut chart → /students?batch=X).
+  // Persist user-driven filter changes back to the URL so refresh/back keeps the filter.
+  useEffect(() => {
+    const urlBatch = searchParams.get('batch');
+    if (urlBatch !== batchFilter) {
+      setBatchFilter(urlBatch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  useEffect(() => {
+    const currentUrlBatch = searchParams.get('batch');
+    if (batchFilter === currentUrlBatch) return;
+    const next = new URLSearchParams(searchParams);
+    if (batchFilter) {
+      next.set('batch', batchFilter);
+    } else {
+      next.delete('batch');
+    }
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchFilter]);
 
   // Date is in URL so it survives navigation
   const markDate = searchParams.get('date') ?? todayISO();

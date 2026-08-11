@@ -79,6 +79,26 @@ export interface AttendanceRecord {
   updatedAt: string;
 }
 
+/**
+ * Manual payment record per student per month. The teacher records how much the student paid
+ * (independently of what the Payments page calculates they owe), and optionally attaches a
+ * screenshot of the receipt (UPI / bank confirmation / cash memo). One record per student/month —
+ * re-saving updates the existing one.
+ */
+export interface PaymentRecord {
+  id: ID;
+  studentId: ID;
+  /** 'YYYY-MM' format. */
+  month: string;
+  amount: number;
+  /** Optional screenshot of the payment, stored as a base64 data URL (JPEG, max 1200px wide, ~0.8 quality). */
+  screenshotDataUrl?: string;
+  /** Optional free-text note (e.g. "Paid in cash", "UPI ref: 1234"). */
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const PRELISTED_CANCEL_REASONS = [
   'Rained out',
   'Public holiday',
@@ -97,6 +117,7 @@ export interface DB {
   memberships: BatchMembership[];
   sessions: Session[];
   attendance: AttendanceRecord[];
+  payments: PaymentRecord[];
 }
 
 export const SCHEMA_VERSION = 1;

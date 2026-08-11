@@ -56,6 +56,10 @@ export async function loadDB(): Promise<DB | null> {
         }
       }
     }
+    // Forward-migration: ensure payments array exists (added for manual payment entry).
+    if (!Array.isArray(stored.payments)) {
+      stored.payments = [];
+    }
     return stored;
   } catch (e) {
     console.error('Skatetrack: failed to load DB', e);

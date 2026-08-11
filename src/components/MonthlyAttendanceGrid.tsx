@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { findOrCreateRecurringSessions, parseISODate } from '../data/sessions';
 import { Card } from './ui';
+import { todayISO } from '../data/storage';
 
 type Cell = 'present' | 'absent' | 'mixed' | 'none';
 
@@ -49,6 +50,7 @@ export function MonthlyAttendanceGrid() {
   const memberships = useStore((s) => s.db.memberships);
   const sessions = useStore((s) => s.db.sessions);
   const attendance = useStore((s) => s.db.attendance);
+  const todayIso = todayISO();
 
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -165,29 +167,42 @@ export function MonthlyAttendanceGrid() {
                     const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                     const sessionsForDate = (monthSessionsByDate.get(dateStr) ?? []).filter((s) => row.batchIds.has(s.batchId));
                     const c = computeCell(row.id, dateStr, monthSessionsByDate.get(dateStr) ?? [], attendance, row.batchIds);
-                    if (c === 'none' || sessionsForDate.length === 0) {
-                      return <div key={d} className="h-6 mx-0.5 rounded bg-bg-card opacity-50" />;
-                    }
-                    // Reschedule detection: was attendance recorded on a day that is NOT a normal
-                    // class day for any of the student's batches? If yes, mark with orange dotted border.
                     const dayOfWeek = parseISODate(dateStr).getDay();
                     const studentBatches = batches.filter((b) => row.batchIds.has(b.id) && !b.archivedAt);
                     const isNormalClassDay = studentBatches.some((b) => b.daysOfWeek.includes(dayOfWeek));
-                    const isReschedule = !isNormalClassDay;
-                    // Dotted boundary signals "class day". Cyan = normal schedule, orange = reschedule.
+                    const hasOneOff = sessionsForDate.some((s) => s.type === 'one-off');
+                    const isReschedule = hasOneOff || (!isNormalClassDay && sessionsForDate.length > 0);
                     const borderClasses = isReschedule
                       ? 'border border-dotted border-neon-orange/80'
-                      : 'border border-dotted border-neon-cyan/70';
-                    return (
-                      <button
-                        key={d}
-                        onClick={() => navigate(`/students/${row.id}?date=${dateStr}`)}
-                        className={`relative h-6 mx-0.5 rounded ${cellClasses(c)} ${borderClasses} flex items-center justify-center text-[10px] font-bold active:scale-95`}
-                        title={`${row.name} · ${parseISODate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${c}${isReschedule ? ' · rescheduled' : ''}`}
-                      >
-                        {cellLabel(c)}
-                      </button>
-                    );
+                      : isNormalClassDay
+                      ? 'border border-dotted border-neon-cyan/70'
+                      : '';
+
+                    if (sessionsForDate.length > 0 && c !== 'none') {
+                      return (
+                        <button
+                          key={d}
+                          onClick={() => navigate(`/students/${row.id}?date=${dateStr}`)}
+                          className={`relative h-6 mx-0.5 rounded ${cellClasses(c)} ${borderClasses} flex items-center justify-center text-[10px] font-bold active:scale-95`}
+                          title={`${row.name} · ${parseISODate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${c}${isReschedule ? ' · rescheduled' : ''}`}
+                        >
+                          {cellLabel(c)}
+                        </button>
+                      );
+                    }
+                    if (isNormalClassDay) {
+                      const isFuture = dateStr > todayIso;
+                      return (
+                        <button
+                          key={d}
+                          onClick={() => navigate(`/students/${row.id}?date=${dateStr}`)}
+                          className={`relative h-6 mx-0.5 rounded bg-transparent ${borderClasses} flex items-center justify-center text-[10px] active:scale-95`}
+                          title={`${row.name} · ${parseISODate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${isFuture ? 'upcoming class' : 'unmarked class'}`}
+                          aria-label={`${isFuture ? 'Upcoming' : 'Unmarked'} class day for ${row.name}`}
+                        />
+                      );
+                    }
+                    return <div key={d} className="h-6 mx-0.5 rounded bg-bg-card opacity-50" />;
                   })}
                 </div>
               );
