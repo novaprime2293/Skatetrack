@@ -68,6 +68,13 @@ export function BatchesPage() {
                     </div>
                     {b.location && <div className="text-xs text-fg-muted mt-0.5">📍 {b.location}</div>}
                     <div className="text-xs text-fg-muted mt-1">{memberCount} student{memberCount === 1 ? '' : 's'}</div>
+                    <div className="text-xs mt-1">
+                      {b.costPerClass > 0 ? (
+                        <span className="text-neon-cyan font-semibold">₹{b.costPerClass} / class</span>
+                      ) : (
+                        <span className="text-fg-muted">No charge</span>
+                      )}
+                    </div>
                   </div>
                   {b.archivedAt && <Pill color="muted">Archived</Pill>}
                 </div>
@@ -273,7 +280,7 @@ function BatchDetail({
   onDeleteOneOff,
   onMarkSession,
 }: {
-  batch: { id: string; name: string; startTime: string; endTime: string; daysOfWeek: number[]; archivedAt?: string | null };
+  batch: { id: string; name: string; startTime: string; endTime: string; daysOfWeek: number[]; costPerClass?: number; archivedAt?: string | null };
   students: Array<{ id: string; name: string; archivedAt?: string | null }>;
   members: Array<{ studentId: string }>;
   sessions: Array<{ id: string; date: string; type: string; status: string }>;
@@ -296,6 +303,7 @@ function BatchDetail({
       <div className="flex flex-wrap gap-1.5">
         <Pill>{batch.daysOfWeek.map((d) => DAY_NAMES[d]).join(' · ')}</Pill>
         <Pill color="cyan">{batch.startTime}–{batch.endTime}</Pill>
+        {(batch.costPerClass ?? 0) > 0 && <Pill color="orange">₹{batch.costPerClass}/class</Pill>}
       </div>
 
       <div>

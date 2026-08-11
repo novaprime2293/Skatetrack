@@ -6,12 +6,13 @@ const tabs = [
   { to: '/students', label: 'Students', icon: PersonIcon },
   { to: '/batches', label: 'Batches', icon: GroupIcon },
   { to: '/chart', label: 'Chart', icon: ChartIcon },
+  { to: '/payments', label: 'Pay', icon: MoneyIcon },
 ];
 
 export function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-bg-elevated/95 backdrop-blur-md">
-      <div className="max-w-2xl mx-auto grid grid-cols-4">
+      <div className="max-w-2xl mx-auto grid grid-cols-5">
         {tabs.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
@@ -93,6 +94,17 @@ function ChartIcon({ active }: { active: boolean }) {
         <rect x="5" y="13" width="3" height="6" />
         <rect x="10.5" y="9" width="3" height="10" />
         <rect x="16" y="5" width="3" height="14" />
+      </svg>
+    </IconWrap>
+  );
+}
+
+function MoneyIcon({ active }: { active: boolean }) {
+  return (
+    <IconWrap active={active}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2v20" />
+        <path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
       </svg>
     </IconWrap>
   );

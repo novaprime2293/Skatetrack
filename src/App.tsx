@@ -6,16 +6,20 @@ import { HomePage } from './pages/HomePage';
 import { StudentsPage } from './pages/StudentsPage';
 import { ChartPage } from './pages/ChartPage';
 import { BatchesPage } from './pages/BatchesPage';
+import { PaymentsPage } from './pages/PaymentsPage';
 import { AttendanceFlowPage } from './pages/AttendanceFlowPage';
 import { MissedAttendanceModal } from './components/MissedAttendanceModal';
 import { SettingsPage } from './pages/SettingsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import { scanAndNotify, clearAllNotified } from './data/notifications';
 
 export function App() {
   const hydrate = useStore((s) => s.hydrate);
   const hydrated = useStore((s) => s.hydrated);
   const batches = useStore((s) => s.db.batches);
   const students = useStore((s) => s.db.students);
+  const sessions = useStore((s) => s.db.sessions);
+  const attendance = useStore((s) => s.db.attendance);
   const location = useLocation();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
@@ -32,6 +36,18 @@ export function App() {
       setOnboardingChecked(true);
     }
   }, [hydrated, onboardingChecked, batches.length, students.length]);
+
+  // End-of-class notification loop — fires at most once per (session, OS session).
+  useEffect(() => {
+    if (!hydrated) return;
+    clearAllNotified();
+    const tick = () => {
+      scanAndNotify(sessions, attendance, batches, 5);
+    };
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, [hydrated, sessions, attendance, batches]);
 
   if (!hydrated) {
     return (
@@ -56,6 +72,7 @@ export function App() {
           <Route path="/students/:studentId" element={<StudentsPage />} />
           <Route path="/batches" element={<BatchesPage />} />
           <Route path="/chart" element={<ChartPage />} />
+          <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/attendance/:sessionId" element={<AttendanceFlowPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

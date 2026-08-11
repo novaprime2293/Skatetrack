@@ -42,7 +42,9 @@ interface StoreState {
   updateTeacherName: (name: string) => void;
   updateMonthlyTarget: (value: number) => void;
 
-  addBatch: (input: Omit<Batch, 'id' | 'teacherId' | 'createdAt' | 'archivedAt'>) => Batch;
+  addBatch: (
+    input: Omit<Batch, 'id' | 'teacherId' | 'createdAt' | 'archivedAt' | 'costPerClass'> & { costPerClass?: number }
+  ) => Batch;
   updateBatch: (id: string, patch: Partial<Batch>) => void;
   archiveBatch: (id: string) => void;
   unarchiveBatch: (id: string) => void;
@@ -63,6 +65,8 @@ interface StoreState {
   setAttendance: (sessionId: string, studentId: string, status: 'present' | 'absent') => void;
   bulkSetAttendance: (sessionId: string, records: Array<{ studentId: string; status: 'present' | 'absent' }>) => void;
   resetAttendance: (sessionId: string) => void;
+  /** Remove a single AttendanceRecord. If the session has no other records left, revert its status to 'scheduled'. */
+  removeAttendance: (recordId: string) => void;
 
   /**
    * Mark attendance for a student on a date the batch doesn't normally run on.
@@ -118,6 +122,7 @@ export const useStore = create<StoreState>((set, get) => ({
       teacherId: get().db.teacher.id,
       createdAt: nowISO(),
       archivedAt: null,
+      costPerClass: 0,
       ...input,
     };
     set((s) => {
@@ -397,6 +402,28 @@ export const useStore = create<StoreState>((set, get) => ({
         sessions: s.db.sessions.map((sess) =>
           sess.id === sessionId ? { ...sess, status: 'scheduled' as const } : sess
         ),
+      };
+      persist(next);
+      return { db: next };
+    });
+  },
+
+  removeAttendance: (recordId) => {
+    set((s) => {
+      const target = s.db.attendance.find((a) => a.id === recordId);
+      if (!target) return {};
+      const remainingForSession = s.db.attendance.filter(
+        (a) => a.sessionId === target.sessionId && a.id !== recordId
+      );
+      const next = {
+        ...s.db,
+        attendance: s.db.attendance.filter((a) => a.id !== recordId),
+        sessions:
+          remainingForSession.length === 0
+            ? s.db.sessions.map((sess) =>
+                sess.id === target.sessionId ? { ...sess, status: 'scheduled' as const } : sess
+              )
+            : s.db.sessions,
       };
       persist(next);
       return { db: next };

@@ -22,6 +22,8 @@ export interface Batch {
   /** HH:mm 24h */
   endTime: string;
   location?: string;
+  /** Cost charged per class for this batch, in INR (or teacher's local currency). 0 = unpaid / not set. Defaulted to 0 on load for v1 data. */
+  costPerClass: number;
   archivedAt?: string | null; // soft-delete
   createdAt: string;
 }

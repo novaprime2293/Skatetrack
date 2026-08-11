@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { PageHeader, Card, SectionTitle, Pill, Button, Modal, Label, TextInput } from '../components/ui';
 import { MonthlyAttendanceGrid } from '../components/MonthlyAttendanceGrid';
-import { StudentsPerBatchDonut } from '../components/StudentsPerBatchDonut';
 import { batchRunsOnDate, findOrCreateRecurringSessions, sessionEnded, isToday } from '../data/sessions';
 import { todayISO } from '../data/storage';
 
@@ -37,6 +36,7 @@ export function HomePage() {
       }
     }
     return out;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBatches, today, sessions, ensureSession]);
 
   const pendingCount = useMemo(() => {
@@ -97,8 +97,6 @@ export function HomePage() {
       </div>
 
       <MonthlyAttendanceGrid />
-
-      <StudentsPerBatchDonut />
 
       <SectionTitle
         action={

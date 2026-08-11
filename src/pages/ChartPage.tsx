@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../data/store';
 import { PageHeader, Card, EmptyState, Pill, SectionTitle } from '../components/ui';
+import { StudentsPerBatchDonut } from '../components/StudentsPerBatchDonut';
 
 function startOfMonth(year: number, monthIdx: number): string {
   return `${year}-${String(monthIdx + 1).padStart(2, '0')}-01`;
@@ -69,13 +70,29 @@ export function ChartPage() {
 
   // Section 1 — Monthly target bar chart.
   // Done = count of present AttendanceRecords for this student whose session is in the visible month
-  // and the session is not cancelled.
+  // AND the student was a member of that batch on the session's date. This is the Bhoomika fix:
+  // when a student is moved between batches, attendance from their old batch (after they left)
+  // no longer counts toward their monthly "done" total.
+  // Pre-build a lookup of { [studentId|batchId]: { joinedDate, removedDate? } } for fast checks.
+  const membershipLookup = useMemo(() => {
+    const map = new Map<string, { joinedDate: string; removedDate: string | null }>();
+    for (const m of memberships) {
+      map.set(`${m.studentId}|${m.batchId}`, { joinedDate: m.joinedDate, removedDate: m.removedDate });
+    }
+    return map;
+  }, [memberships]);
+
   const monthlyProgress = useMemo(() => {
     const doneByStudent = new Map<string, number>();
     for (const att of attendance) {
       if (att.status !== 'present') continue;
       const sess = sessionsInMonthById.get(att.sessionId);
       if (!sess) continue;
+      // Membership-scope check: only count if the student was a member of sess.batchId on sess.date.
+      const mem = membershipLookup.get(`${att.studentId}|${sess.batchId}`);
+      if (!mem) continue;
+      if (mem.joinedDate > sess.date) continue;
+      if (mem.removedDate !== null && mem.removedDate < sess.date) continue;
       doneByStudent.set(att.studentId, (doneByStudent.get(att.studentId) ?? 0) + 1);
     }
     const rows = activeStudents
@@ -86,27 +103,35 @@ export function ChartPage() {
       // Students with no done classes go to the bottom of the chart (they're far from the minimum).
       .sort((a, b) => a.done - b.done || a.name.localeCompare(b.name));
     return rows;
-  }, [attendance, sessionsInMonthById, activeStudents]);
+  }, [attendance, sessionsInMonthById, activeStudents, membershipLookup]);
 
   // Section 2 — Students ranked by attendance (present / total) over visible month.
-  // Applies the optional batch filter.
+  // Applies the optional batch filter. Same membership-scope fix as Section 1: only count
+  // attendance for sessions where the student was actually a member on that date.
   const perStudent = useMemo(() => {
     // If a batch filter is active, restrict to sessions of that batch.
     const scopedSessions = batchFilter
       ? sessionsInMonth.filter((s) => s.batchId === batchFilter)
       : sessionsInMonth;
     const scopedSessionIds = new Set(scopedSessions.map((s) => s.id));
+    const scopedSessionById = new Map(scopedSessions.map((s) => [s.id, s]));
 
     const acc = new Map<string, { total: number; present: number; absent: number }>();
     for (const att of attendance) {
       if (!scopedSessionIds.has(att.sessionId)) continue;
+      const sess = scopedSessionById.get(att.sessionId);
+      if (!sess) continue;
+      const mem = membershipLookup.get(`${att.studentId}|${sess.batchId}`);
+      if (!mem) continue;
+      if (mem.joinedDate > sess.date) continue;
+      if (mem.removedDate !== null && mem.removedDate < sess.date) continue;
       const m = acc.get(att.studentId) ?? { total: 0, present: 0, absent: 0 };
       m.total++;
       if (att.status === 'present') m.present++;
       else m.absent++;
       acc.set(att.studentId, m);
     }
-    // Limit ranked list to students actually in the filtered batch (when filtered).
+    // Limit ranked list to students who have an active OR historical membership touching this batch+month.
     const candidateIds = batchFilter
       ? new Set(
           memberships
@@ -126,11 +151,14 @@ export function ChartPage() {
       })
       .filter((r) => !candidateIds || candidateIds.has(r.studentId))
       .sort((a, b) => a.rate - b.rate || a.name.localeCompare(b.name));
-  }, [attendance, sessionsInMonth, students, memberships, batchFilter]);
+  }, [attendance, sessionsInMonth, students, memberships, batchFilter, membershipLookup]);
 
   return (
     <div className="px-4 pb-12">
       <PageHeader title="Charts" subtitle="Classes done vs. monthly minimum" />
+
+      {/* Donut moved from Home → Charts (Q-D=A). */}
+      <StudentsPerBatchDonut />
 
       {/* Month selector */}
       <Card className="mb-4 !p-3">

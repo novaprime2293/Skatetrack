@@ -5,6 +5,7 @@ import { PageHeader, Card, Button, Modal, TextInput, Label, Pill, EmptyState } f
 import { findOrCreateRecurringSessions, batchRunsOnDate, formatISODate, formatISODateLong, parseISODate } from '../data/sessions';
 import { todayISO } from '../data/storage';
 import { DAY_NAMES } from '../data/types';
+import { DownloadReportModal } from '../components/StudentReport';
 
 export function StudentsPage() {
   const { studentId } = useParams<{ studentId?: string }>();
@@ -465,6 +466,8 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
   const [name, setName] = useState(student.name);
   const [parent, setParent] = useState(student.parentContact ?? '');
   const [showManageBatches, setShowManageBatches] = useState(false);
+  const [showAllAttendance, setShowAllAttendance] = useState(false);
+  const [showDownloadReport, setShowDownloadReport] = useState(false);
 
   const studentBatches = memberships.filter((m) => m.studentId === student.id && m.removedDate === null);
   const activeStudentBatches = studentBatches
@@ -605,6 +608,12 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-fg-muted">Calendar</h4>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAllAttendance(true)}
+              className="text-[10px] uppercase tracking-wider font-bold text-neon-orange hover:opacity-80"
+            >
+              All attendance →
+            </button>
             <button onClick={goPrev} aria-label="Previous month" className="w-7 h-7 rounded-full bg-bg-card border border-border text-fg-secondary hover:text-fg-primary">‹</button>
             <button onClick={goToday} disabled={isCurrentMonth} className="text-[10px] uppercase tracking-wider font-bold text-neon-green disabled:opacity-40 disabled:cursor-default">Today</button>
             <button onClick={goNext} aria-label="Next month" className="w-7 h-7 rounded-full bg-bg-card border border-border text-fg-secondary hover:text-fg-primary">›</button>
@@ -722,9 +731,30 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
         </Button>
       </div>
 
+      <button
+        onClick={() => setShowDownloadReport(true)}
+        className="w-full text-xs text-neon-cyan uppercase tracking-wider font-bold py-2 hover:opacity-80"
+      >
+        📥 Download monthly report
+      </button>
+
       <ManageBatchesModal
         open={showManageBatches}
         onClose={() => setShowManageBatches(false)}
+        studentId={student.id}
+        studentName={student.name}
+      />
+
+      <AllAttendanceModal
+        open={showAllAttendance}
+        onClose={() => setShowAllAttendance(false)}
+        studentId={student.id}
+        studentName={student.name}
+      />
+
+      <DownloadReportModal
+        open={showDownloadReport}
+        onClose={() => setShowDownloadReport(false)}
         studentId={student.id}
         studentName={student.name}
       />
@@ -748,5 +778,160 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
         </Modal>
       )}
     </div>
+  );
+}
+
+/**
+ * "All attendance records" modal \u2014 shows every attendance record for a single student across all
+ * batches (including archived / historical batches the student was later removed from). Used for
+ * cleanup: the teacher can review and delete individual records here. The per-batch calendar in
+ * StudentDetail intentionally has no delete button \u2014 cleanup happens in this view only.
+ */
+function AllAttendanceModal({
+  open,
+  onClose,
+  studentId,
+  studentName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  studentId: string;
+  studentName: string;
+}) {
+  const sessions = useStore((s) => s.db.sessions);
+  const batches = useStore((s) => s.db.batches);
+  const attendance = useStore((s) => s.db.attendance);
+  const removeAttendance = useStore((s) => s.removeAttendance);
+
+  const todayDate = new Date();
+  const [viewYear, setViewYear] = useState(todayDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(todayDate.getMonth()); // 0-indexed
+  const from = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-01`;
+  const to = (() => {
+    const lastDay = new Date(viewYear, viewMonth + 1, 0).getDate();
+    return `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  })();
+
+  const records = useMemo(() => {
+    const rows = attendance
+      .filter((a) => a.studentId === studentId)
+      .map((a) => {
+        const sess = sessions.find((s) => s.id === a.sessionId);
+        const batch = sess ? batches.find((b) => b.id === sess.batchId) : null;
+        return {
+          id: a.id,
+          date: sess?.date ?? '?',
+          batchName: batch?.name ?? '(deleted batch)',
+          batchArchived: !!batch?.archivedAt,
+          status: a.status,
+          sessionStatus: sess?.status ?? 'cancelled',
+        };
+      })
+      .filter((r) => r.date >= from && r.date <= to)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    return rows;
+  }, [attendance, sessions, batches, studentId, from, to]);
+
+  const presentCount = records.filter((r) => r.status === 'present').length;
+  const absentCount = records.filter((r) => r.status === 'absent').length;
+
+  const goPrev = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  };
+  const goNext = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  if (!open) return null;
+
+  return (
+    <Modal open onClose={onClose} title={`All attendance \u2014 ${studentName}`}>
+      <div className="space-y-4">
+        {/* Month selector */}
+        <div className="flex items-center justify-between gap-3 bg-bg-card border border-border rounded-xl p-3">
+          <button
+            onClick={goPrev}
+            aria-label="Previous month"
+            className="w-8 h-8 rounded-full bg-bg-base border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
+          >
+            \u2039
+          </button>
+          <div className="flex-1 text-center">
+            <div className="text-sm font-semibold">{monthLabel}</div>
+          </div>
+          <button
+            onClick={goNext}
+            aria-label="Next month"
+            className="w-8 h-8 rounded-full bg-bg-base border border-border text-fg-secondary hover:text-fg-primary flex items-center justify-center"
+          >
+            \u203a
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3 text-[11px] text-fg-muted">
+          <span><span className="text-neon-green font-bold">{presentCount}</span> present</span>
+          <span><span className="text-neon-pink font-bold">{absentCount}</span> absent</span>
+          <span className="ml-auto text-fg-secondary">{records.length} total</span>
+        </div>
+
+        <p className="text-[11px] text-fg-muted leading-relaxed">
+          Every attendance mark for {studentName} this month, across all batches (including any batch they were moved out of).
+          Tap delete to remove an incorrect mark.
+        </p>
+
+        {records.length === 0 ? (
+          <div className="text-center py-6 text-sm text-fg-muted">No attendance records for this month.</div>
+        ) : (
+          <div className="space-y-1.5 max-h-[60vh] overflow-y-auto scrollbar-hide -mx-1 px-1">
+            {records.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center gap-2 bg-bg-card border border-border rounded-xl px-3 py-2"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">
+                    {formatISODate(r.date)} \u00b7 <span className="text-fg-secondary">{r.batchName}</span>
+                  </div>
+                  <div className="text-[10px] mt-0.5 flex items-center gap-1.5">
+                    <Pill color={r.status === 'present' ? 'green' : 'pink'}>
+                      {r.status === 'present' ? 'Present' : 'Absent'}
+                    </Pill>
+                    {r.batchArchived && <Pill color="muted">Archived batch</Pill>}
+                    {r.sessionStatus === 'cancelled' && <Pill color="muted">Cancelled session</Pill>}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (confirm(`Remove this attendance mark (${r.status} on ${r.date})?`)) {
+                      removeAttendance(r.id);
+                    }
+                  }}
+                  className="text-xs text-fg-muted hover:text-neon-pink uppercase tracking-wider font-bold px-2 py-1"
+                  aria-label={`Delete attendance from ${r.date}`}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <Button variant="ghost" onClick={onClose} className="w-full">Close</Button>
+      </div>
+    </Modal>
   );
 }

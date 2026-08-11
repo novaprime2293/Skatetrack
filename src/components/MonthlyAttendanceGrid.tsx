@@ -163,24 +163,29 @@ export function MonthlyAttendanceGrid() {
                   </button>
                   {days.map((d) => {
                     const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    const sessionsForDate = (monthSessionsByDate.get(dateStr) ?? []).filter((s) => row.batchIds.has(s.batchId));
                     const c = computeCell(row.id, dateStr, monthSessionsByDate.get(dateStr) ?? [], attendance, row.batchIds);
-                    // Need a date-scoped session set that actually matches what computeCell receives.
-                    // We pass monthSessionsByDate.get(dateStr) which is the full set for that date across all batches.
-                    const sessionCount = (monthSessionsByDate.get(dateStr) ?? []).filter((s) => row.batchIds.has(s.batchId)).length;
-                    if (c === 'none' || sessionCount === 0) {
+                    if (c === 'none' || sessionsForDate.length === 0) {
                       return <div key={d} className="h-6 mx-0.5 rounded bg-bg-card opacity-50" />;
                     }
+                    // Reschedule detection: was attendance recorded on a day that is NOT a normal
+                    // class day for any of the student's batches? If yes, mark with orange dot.
+                    const dayOfWeek = parseISODate(dateStr).getDay();
+                    const studentBatches = batches.filter((b) => row.batchIds.has(b.id) && !b.archivedAt);
+                    const isNormalClassDay = studentBatches.some((b) => b.daysOfWeek.includes(dayOfWeek));
+                    const isReschedule = !isNormalClassDay;
+                    const dayMarkerColor = isReschedule ? 'bg-neon-orange' : 'bg-neon-cyan/70';
                     return (
                       <button
                         key={d}
                         onClick={() => navigate(`/students/${row.id}?date=${dateStr}`)}
                         className={`relative h-6 mx-0.5 rounded ${cellClasses(c)} flex items-center justify-center text-[10px] font-bold active:scale-95`}
-                        title={`${row.name} · ${parseISODate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${c}`}
+                        title={`${row.name} · ${parseISODate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${c}${isReschedule ? ' · rescheduled' : ''}`}
                       >
-                        {/* Batch-day marker — small cyan dot at the top, present on every scheduled class day regardless of attendance status. */}
+                        {/* Top marker: cyan = normal class day, orange = reschedule. */}
                         <span
                           aria-hidden="true"
-                          className="absolute top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-neon-cyan/70"
+                          className={`absolute top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${dayMarkerColor}`}
                         />
                         {cellLabel(c)}
                       </button>
@@ -198,6 +203,7 @@ export function MonthlyAttendanceGrid() {
         <div className="flex items-center gap-1"><span className="font-bold text-neon-pink">R</span>All absent</div>
         <div className="flex items-center gap-1"><span className="font-bold">M</span>Mixed</div>
         <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-cyan/70" />Class day</div>
+        <div className="flex items-center gap-1"><span className="inline-block w-1 h-1 rounded-full bg-neon-orange" />Rescheduled</div>
       </div>
     </div>
   );

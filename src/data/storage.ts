@@ -48,6 +48,14 @@ export async function loadDB(): Promise<DB | null> {
     if (stored.teacher && stored.teacher.monthlyTarget === undefined) {
       stored.teacher.monthlyTarget = 8;
     }
+    // Forward-migration: ensure batch.costPerClass exists. Default 0 (no charge) for v1 data.
+    if (Array.isArray(stored.batches)) {
+      for (const batch of stored.batches) {
+        if (batch && typeof batch === 'object' && batch.costPerClass === undefined) {
+          batch.costPerClass = 0;
+        }
+      }
+    }
     return stored;
   } catch (e) {
     console.error('Skatetrack: failed to load DB', e);

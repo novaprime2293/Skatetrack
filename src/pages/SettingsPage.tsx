@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { PageHeader, Card, Button, Modal, Label, TextInput, TextArea } from '../components/ui';
 import { todayISO } from '../data/storage';
+import {
+  notifSupported,
+  notifPermission,
+  notifRequestPermission,
+  isNotifyOptIn,
+  setNotifyOptIn,
+} from '../data/notifications';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -19,6 +26,11 @@ export function SettingsPage() {
   const [importSuccess, setImportSuccess] = useState(false);
   const [name, setName] = useState(teacher.name);
   const [monthlyTarget, setMonthlyTarget] = useState<string>(String(teacher.monthlyTarget));
+  const [notifState, setNotifState] = useState({
+    supported: notifSupported(),
+    permission: notifPermission(),
+    optIn: isNotifyOptIn(),
+  });
 
   // Keep local input in sync if the underlying value changes externally (e.g. after import).
   useEffect(() => {
@@ -80,6 +92,54 @@ export function SettingsPage() {
         >
           Save
         </Button>
+      </Card>
+
+      <Card className="mb-4 border-neon-orange/40">
+        <div className="text-xs uppercase tracking-wider text-neon-orange font-bold mb-1">Reminders</div>
+        <h3 className="text-lg font-bold mb-1">End-of-class notifications</h3>
+        <p className="text-sm text-fg-secondary mb-3">
+          When a class ends without attendance marked, you'll get a phone notification so you don't forget to swipe cards.
+        </p>
+        {!notifState.supported ? (
+          <div className="text-sm text-fg-muted">Notifications aren't supported on this device/browser.</div>
+        ) : notifState.permission === 'denied' ? (
+          <div className="text-sm text-fg-muted">
+            Notifications are blocked in your browser settings. Enable them for this site to use reminders.
+          </div>
+        ) : notifState.permission === 'default' ? (
+          <Button
+            onClick={async () => {
+              const result = await notifRequestPermission();
+              setNotifState({ ...notifState, permission: result });
+            }}
+            className="w-full"
+          >
+            🔔 Enable reminders
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            <label className="flex items-center justify-between bg-bg-base border border-border rounded-xl px-4 py-3">
+              <span className="text-sm">Send end-of-class reminders</span>
+              <button
+                onClick={() => {
+                  const next = !notifState.optIn;
+                  setNotifyOptIn(next);
+                  setNotifState({ ...notifState, optIn: next });
+                }}
+                className={`w-12 h-7 rounded-full transition-colors relative ${notifState.optIn ? 'bg-neon-green' : 'bg-bg-card border border-border'}`}
+                aria-pressed={notifState.optIn}
+                aria-label="Toggle end-of-class reminders"
+              >
+                <span
+                  className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${notifState.optIn ? 'translate-x-6' : 'translate-x-1'}`}
+                />
+              </button>
+            </label>
+            <p className="text-[11px] text-fg-muted leading-relaxed">
+              Reminders fire from a 60-second check inside the app. They'll only reach you while the app is open in a tab. On iPhone, web notifications are restricted — open the app shortly after class ends to get the nudge.
+            </p>
+          </div>
+        )}
       </Card>
 
       <Card className="mb-4 border-neon-cyan/40">

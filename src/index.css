@@ -76,6 +76,12 @@ input, textarea {
 .neon-text-pink {
   text-shadow: 0 0 12px rgba(255, 46, 147, 0.6);
 }
+.neon-text-cyan {
+  text-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
+}
+.neon-text-orange {
+  text-shadow: 0 0 12px rgba(255, 145, 0, 0.6);
+}
 
 /* Skateboard-stripe accent */
 .stripe-accent {
