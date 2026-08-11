@@ -487,7 +487,6 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
   const batches = useStore((s) => s.db.batches);
   const sessions = useStore((s) => s.db.sessions);
   const attendance = useStore((s) => s.db.attendance);
-  const ensureSession = useStore((s) => s.ensureSessionForBatchDate);
   const setAttendance = useStore((s) => s.setAttendance);
   const setAdhocAttendance = useStore((s) => s.setAdhocAttendance);
   const removeAttendance = useStore((s) => s.removeAttendance);
@@ -519,23 +518,24 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
   // Calendar model — one row per active batch, one cell per day of the month.
   // A cell is "scheduled" if a session (recurring or one-off) exists for that (batch, date);
   // otherwise the cell is empty but tappable to record adhoc attendance against that row's batch.
+  //
+  // Important: do NOT persist virtual sessions here. Previously this loop called
+  // ensureSession() for every virtual session in the month, which raced with React's
+  // concurrent renders and produced duplicate recurring sessions for the same
+  // (batchId, date) — see the dedup migration in storage.ts. Calendar renders are
+  // now fully read-only. Sessions get persisted the first time the user actually
+  // marks attendance (handlePick → setAttendance or setAdhocAttendance → ensureSession).
   const calendarRows = useMemo(() => {
     const fromStr = isoOfDay(1);
     const toStr = isoOfDay(daysInMonth);
     return activeStudentBatches
       .map((batch) => {
         const sessionList = findOrCreateRecurringSessions(batch, sessions, fromStr, toStr);
-        // Persist recurring sessions lazily so AttendanceRecord writes have a real session row to attach to.
-        for (const sess of sessionList) {
-          if (sess.id.startsWith('virtual-')) {
-            ensureSession(batch.id, sess.date);
-          }
-        }
         const sessionByDate = new Map<string, ReturnType<typeof useStore.getState>['db']['sessions'][number]>();
-        for (const sess of sessions) {
-          if (sess.batchId === batch.id && sess.date >= fromStr && sess.date <= toStr) {
-            sessionByDate.set(sess.date, sess);
-          }
+        for (const sess of sessionList) {
+          // Real sessions (not virtual) keyed by date for direct lookup in the render.
+          if (sess.id.startsWith('virtual-')) continue;
+          sessionByDate.set(sess.date, sess);
         }
         return {
           batchId: batch.id,
@@ -545,7 +545,7 @@ function StudentDetail({ student, onSave, onArchive, initialDate }: { student: {
         };
       })
       .sort((a, b) => a.batchName.localeCompare(b.batchName));
-  }, [activeStudentBatches, sessions, viewYear, viewMonth, daysInMonth, ensureSession]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeStudentBatches, sessions, viewYear, viewMonth, daysInMonth]);
 
   // Batch context — per-batch totals for this month
   const batchContext = useMemo(() => {

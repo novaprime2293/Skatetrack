@@ -255,32 +255,44 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   ensureSessionForBatchDate: (batchId, date) => {
-    const existing = get().db.sessions.find(
-      (s) => s.batchId === batchId && s.date === date && s.type === 'recurring'
-    );
-    if (existing) return existing;
-    const batch = get().db.batches.find((b) => b.id === batchId);
-    if (!batch) throw new Error('Batch not found');
-    const dayOfWeek = parseISODate(date).getDay();
-    const { startTime, endTime } = getBatchTimeForDay(batch, dayOfWeek);
-    const session: Session = {
-      id: newId(),
-      batchId,
-      date,
-      startTime,
-      endTime,
-      type: 'recurring',
-      status: 'scheduled',
-      cancelReason: null,
-      cancelReasonPreset: null,
-      createdAt: nowISO(),
-    };
+    // Atomic check-and-create: do the existence check INSIDE the set() callback so two
+    // synchronous calls in the same render cycle can't both pass the check and create a
+    // duplicate. Returns the resulting session (existing or newly created).
+    let result: Session | null = null;
     set((s) => {
+      const existing = s.db.sessions.find(
+        (x) => x.batchId === batchId && x.date === date && x.type === 'recurring',
+      );
+      if (existing) {
+        result = existing;
+        return s; // no-op
+      }
+      const batch = s.db.batches.find((b) => b.id === batchId);
+      if (!batch) {
+        result = null;
+        throw new Error('Batch not found');
+      }
+      const dayOfWeek = parseISODate(date).getDay();
+      const { startTime, endTime } = getBatchTimeForDay(batch, dayOfWeek);
+      const session: Session = {
+        id: newId(),
+        batchId,
+        date,
+        startTime,
+        endTime,
+        type: 'recurring',
+        status: 'scheduled',
+        cancelReason: null,
+        cancelReasonPreset: null,
+        createdAt: nowISO(),
+      };
+      result = session;
       const next = { ...s.db, sessions: [...s.db.sessions, session] };
       persist(next);
       return { db: next };
     });
-    return session;
+    if (!result) throw new Error('Batch not found');
+    return result;
   },
 
   addOneOffSession: (batchId, date, startTime, endTime) => {

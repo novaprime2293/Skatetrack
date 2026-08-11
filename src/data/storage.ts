@@ -7,7 +7,7 @@
 // the structured tables on a future migration.
 
 import { openDB, type IDBPDatabase } from 'idb';
-import type { DB } from './types';
+import type { DB, Session } from './types';
 import { SCHEMA_VERSION } from './types';
 
 const DB_NAME = 'skatetrack';
@@ -112,6 +112,52 @@ export async function loadDB(): Promise<DB | null> {
       }
       if (migrated) {
         console.info('Skatetrack: migrated session dates for IST/timezone fix');
+      }
+    }
+    // Deduplicate sessions — for each (batchId, date, type), keep one canonical session
+    // and reassign any attendance records pointing at the duplicates to the kept session.
+    // This is idempotent and runs on every load; after the first run with no duplicates,
+    // it's a no-op. Logs once if anything was actually merged.
+    if (Array.isArray(stored.sessions)) {
+      const seen = new Map<string, Session>();
+      const merged: Session[] = [];
+      let dupCount = 0;
+      for (const sess of stored.sessions) {
+        const key = `${sess.batchId}|${sess.date}|${sess.type}`;
+        const existing = seen.get(key);
+        if (existing) {
+          // Prefer the kept session that actually has attendance. If neither has attendance,
+          // keep whichever was created first (alphabetical id).
+          const existingAtt = (stored.attendance ?? []).filter((a) => a.sessionId === existing.id).length;
+          const sessAtt = (stored.attendance ?? []).filter((a) => a.sessionId === sess.id).length;
+          let kept = existing;
+          let dropped = sess;
+          if (sessAtt > existingAtt) {
+            kept = sess;
+            dropped = existing;
+            // Replace the entry in `seen` so subsequent dupes re-merge against the new kept.
+            seen.set(key, kept);
+          }
+          // Reassign attendance records from the dropped session to the kept one.
+          if (Array.isArray(stored.attendance)) {
+            for (const a of stored.attendance) {
+              if (a.sessionId === dropped.id) a.sessionId = kept.id;
+            }
+          }
+          // Also: if the kept session is still 'scheduled' but the dropped session was
+          // 'attendance_marked', upgrade the kept one's status so the grid reflects reality.
+          if (kept.status === 'scheduled' && dropped.status === 'attendance_marked') {
+            kept.status = 'attendance_marked';
+          }
+          dupCount++;
+        } else {
+          seen.set(key, sess);
+          merged.push(sess);
+        }
+      }
+      if (dupCount > 0) {
+        console.info(`Skatetrack: merged ${dupCount} duplicate session(s)`);
+        stored.sessions = merged;
       }
     }
     return stored;
