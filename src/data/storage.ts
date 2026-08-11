@@ -162,6 +162,29 @@ export async function loadDB(): Promise<DB | null> {
         console.info(`Skatetrack: reverted ${reverted} session(s) dragged across month boundaries by earlier TZ migration`);
       }
     }
+    // One-time Aug 1 cleanup (2026-08-11): Joseph confirmed a stray 'present' row on Aug 1
+    // for the weekend batch — most likely from an accidental tap in the new MonthlyCalendar
+    // (v10–v12) picker that committed before he could back out. Aug 1 was never a real class
+    // for this batch. Remove attendance rows for any Aug 1 session in a batch whose
+    // daysOfWeek includes Saturday (the weekend-batch pattern). Also revert the session
+    // status to 'scheduled' so the cell renders as unmarked and the session isn't left in
+    // an orphaned 'attendance_marked' state. Idempotent.
+    if (Array.isArray(stored.sessions) && Array.isArray(stored.attendance) && Array.isArray(stored.batches)) {
+      const targetSessions = new Set<string>();
+      for (const sess of stored.sessions) {
+        if (sess.date !== '2026-08-01') continue;
+        const batch = stored.batches.find((b) => b.id === sess.batchId);
+        if (!batch || !batch.daysOfWeek.includes(6)) continue; // only Saturday batches
+        targetSessions.add(sess.id);
+        if (sess.status === 'attendance_marked') sess.status = 'scheduled';
+      }
+      if (targetSessions.size > 0) {
+        const before = stored.attendance.length;
+        stored.attendance = stored.attendance.filter((a) => !targetSessions.has(a.sessionId));
+        const removed = before - stored.attendance.length;
+        console.info(`Skatetrack: removed ${removed} stray attendance row(s) for Aug 1 (weekend batches)`);
+      }
+    }
     // Deduplicate sessions — for each (batchId, date, type), keep one canonical session
     // and reassign any attendance records pointing at the duplicates to the kept session.
     // This is idempotent and runs on every load; after the first run with no duplicates,
